@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#edf4f1">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Dad Energy Meter">
+  <title>Dad Energy Meter</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="hero">
+      <p class="eyebrow">Daily check-in</p>
+      <h1>Dad Energy Meter</h1>
+      <p class="subtitle">Track energy, sleep, and workouts with a low-friction daily log.</p>
+    </header>
+
+    <section class="panel">
+      <form id="entry-form" novalidate>
+        <div class="field">
+          <label for="date">Date</label>
+          <input id="date" name="date" type="date" required>
+        </div>
+
+        <div class="field">
+          <label for="energy">Energy (1-10)</label>
+          <input id="energy" name="energy" type="number" min="1" max="10" inputmode="numeric" required>
+        </div>
+
+        <div class="field">
+          <label for="sleep">Sleep Hours</label>
+          <input id="sleep" name="sleep" type="number" min="0" max="24" step="0.1" inputmode="decimal" required>
+        </div>
+
+        <fieldset class="field">
+          <legend>Workout</legend>
+          <div class="choice-row">
+            <label class="choice">
+              <input type="radio" name="workout" value="yes" checked>
+              <span>Yes</span>
+            </label>
+            <label class="choice">
+              <input type="radio" name="workout" value="no">
+              <span>No</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <div class="field">
+          <label for="notes">Notes</label>
+          <textarea id="notes" name="notes" rows="3" maxlength="240" placeholder="Optional"></textarea>
+        </div>
+
+        <p id="form-message" class="form-message" aria-live="polite"></p>
+
+        <div class="actions">
+          <button type="submit" class="primary">Save</button>
+          <button type="button" id="clear-button" class="secondary">Clear All</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div class="section-heading">
+        <h2>Last 7 Days</h2>
+        <p>Energy and sleep trend.</p>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="trend-chart" aria-label="Energy and sleep chart"></canvas>
+        <p id="chart-fallback" class="chart-fallback" hidden>Chart unavailable offline until Chart.js loads at least once.</p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="section-heading">
+        <h2>Recent Entries</h2>
+        <p>Newest 10 saved days.</p>
+      </div>
+      <ul id="entries-list" class="entries-list"></ul>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

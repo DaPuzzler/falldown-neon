@@ -1,0 +1,24 @@
+{
+  "name": "Dad Energy Meter",
+  "short_name": "Dad Meter",
+  "description": "A minimal daily tracker for dad energy, sleep, workouts, and notes.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f7f5",
+  "theme_color": "#edf4f1",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
