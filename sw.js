@@ -1,11 +1,11 @@
-const CACHE_NAME = 'dad-energy-meter-v3';
+const CACHE_NAME = 'dad-energy-meter-v4';
 const APP_ASSETS = [
   './',
   './index.html',
   './style.css',
   './app.js',
   './manifest.json',
-  './dad-energy-hero.svg',
+  './dad-energy-hero.png',
   './icon-192.png',
   './icon-512.png',
 ];
