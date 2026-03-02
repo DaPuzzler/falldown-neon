@@ -31,6 +31,21 @@
           <input id="date" name="date" type="date" required>
         </div>
 
+        <section class="summary-card" aria-label="Calories summary">
+          <div>
+            <span class="summary-label">Calories Today</span>
+            <strong id="calories-total" class="summary-value">0</strong>
+          </div>
+          <div>
+            <span class="summary-label">Target</span>
+            <strong id="calories-target" class="summary-value">1800</strong>
+          </div>
+          <div>
+            <span class="summary-label">Remaining</span>
+            <strong id="calories-remaining" class="summary-value">1800</strong>
+          </div>
+        </section>
+
         <div class="field">
           <label for="energy">Energy (1-10)</label>
           <div class="slider-row">
@@ -58,6 +73,41 @@
           </div>
         </fieldset>
 
+        <section class="field food-section" aria-labelledby="food-heading">
+          <div class="food-header">
+            <h2 id="food-heading">Food</h2>
+            <p>Keep it short. Calories can be blank.</p>
+          </div>
+
+          <div class="meal-row">
+            <label class="sr-only" for="breakfast-text">Breakfast description</label>
+            <input id="breakfast-text" name="breakfastText" type="text" placeholder="Breakfast">
+            <label class="sr-only" for="breakfast-cal">Breakfast calories</label>
+            <input id="breakfast-cal" name="breakfastCal" type="number" min="0" max="3000" step="1" inputmode="numeric" placeholder="Cals">
+          </div>
+
+          <div class="meal-row">
+            <label class="sr-only" for="lunch-text">Lunch description</label>
+            <input id="lunch-text" name="lunchText" type="text" placeholder="Lunch">
+            <label class="sr-only" for="lunch-cal">Lunch calories</label>
+            <input id="lunch-cal" name="lunchCal" type="number" min="0" max="3000" step="1" inputmode="numeric" placeholder="Cals">
+          </div>
+
+          <div class="meal-row">
+            <label class="sr-only" for="dinner-text">Dinner description</label>
+            <input id="dinner-text" name="dinnerText" type="text" placeholder="Dinner">
+            <label class="sr-only" for="dinner-cal">Dinner calories</label>
+            <input id="dinner-cal" name="dinnerCal" type="number" min="0" max="3000" step="1" inputmode="numeric" placeholder="Cals">
+          </div>
+
+          <div class="meal-row">
+            <label class="sr-only" for="snack-text">Snack description</label>
+            <input id="snack-text" name="snackText" type="text" placeholder="Snack">
+            <label class="sr-only" for="snack-cal">Snack calories</label>
+            <input id="snack-cal" name="snackCal" type="number" min="0" max="3000" step="1" inputmode="numeric" placeholder="Cals">
+          </div>
+        </section>
+
         <div class="field">
           <label for="notes">Notes</label>
           <textarea id="notes" name="notes" rows="3" maxlength="240" placeholder="Optional"></textarea>
@@ -75,10 +125,10 @@
     <section class="panel">
       <div class="section-heading">
         <h2>Last 7 Days</h2>
-        <p>Energy and sleep trend on one shared scale.</p>
+        <p>Energy trend only.</p>
       </div>
       <div class="chart-wrap">
-        <canvas id="trend-chart" aria-label="Energy and sleep chart"></canvas>
+        <canvas id="trend-chart" aria-label="Energy chart"></canvas>
         <p id="chart-fallback" class="chart-fallback" hidden>Chart unavailable offline until Chart.js loads at least once.</p>
       </div>
     </section>

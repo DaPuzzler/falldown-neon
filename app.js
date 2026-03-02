@@ -1,6 +1,8 @@
 const STORAGE_KEY = 'dad-energy-meter.entries';
 const DAYS_TO_CHART = 7;
 const MAX_RECENT_ENTRIES = 10;
+const TARGET_CALORIES = 1800;
+const MEAL_KEYS = ['breakfast', 'lunch', 'dinner', 'snack'];
 
 const form = document.getElementById('entry-form');
 const dateInput = document.getElementById('date');
@@ -13,6 +15,28 @@ const entriesList = document.getElementById('entries-list');
 const formMessage = document.getElementById('form-message');
 const chartCanvas = document.getElementById('trend-chart');
 const chartFallback = document.getElementById('chart-fallback');
+const caloriesTotal = document.getElementById('calories-total');
+const caloriesTarget = document.getElementById('calories-target');
+const caloriesRemaining = document.getElementById('calories-remaining');
+
+const foodInputs = {
+  breakfast: {
+    text: document.getElementById('breakfast-text'),
+    cal: document.getElementById('breakfast-cal'),
+  },
+  lunch: {
+    text: document.getElementById('lunch-text'),
+    cal: document.getElementById('lunch-cal'),
+  },
+  dinner: {
+    text: document.getElementById('dinner-text'),
+    cal: document.getElementById('dinner-cal'),
+  },
+  snack: {
+    text: document.getElementById('snack-text'),
+    cal: document.getElementById('snack-cal'),
+  },
+};
 
 let trendChart;
 
@@ -28,9 +52,86 @@ function timestampString() {
   return new Date().toISOString();
 }
 
+function emptyFood() {
+  return {
+    breakfast: { text: '', cal: 0 },
+    lunch: { text: '', cal: 0 },
+    dinner: { text: '', cal: 0 },
+    snack: { text: '', cal: 0 },
+  };
+}
+
+function parseCalories(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(3000, Math.round(numeric)));
+}
+
+function parseSavedSleep(value) {
+  if (value === '' || value === null || value === undefined) {
+    return '';
+  }
+
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : '';
+}
+
+function parseSavedEnergy(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 1 || numeric > 10) {
+    return 5;
+  }
+
+  return numeric;
+}
+
+// Normalize older saved entries so food logging works without breaking existing data.
+function normalizeEntry(entry = {}) {
+  const food = emptyFood();
+
+  MEAL_KEYS.forEach((meal) => {
+    const savedMeal = entry.food?.[meal] || {};
+    food[meal] = {
+      text: typeof savedMeal.text === 'string' ? savedMeal.text : '',
+      cal: parseCalories(savedMeal.cal),
+    };
+  });
+
+  return {
+    date: entry.date || '',
+    energy: parseSavedEnergy(entry.energy),
+    sleep: parseSavedSleep(entry.sleep),
+    workout: entry.workout === 'no' ? 'no' : 'yes',
+    notes: typeof entry.notes === 'string' ? entry.notes : '',
+    updatedAt: entry.updatedAt || '',
+    food,
+  };
+}
+
+function defaultEntry(date = todayString()) {
+  return {
+    date,
+    energy: 5,
+    sleep: '',
+    workout: 'yes',
+    notes: '',
+    updatedAt: '',
+    food: emptyFood(),
+  };
+}
+
+function normalizeEntries(entries) {
+  return Object.fromEntries(
+    Object.entries(entries || {}).map(([key, value]) => [key, normalizeEntry(value)])
+  );
+}
+
 function loadEntries() {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    return normalizeEntries(JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'));
   } catch (error) {
     console.error('Failed to parse entries', error);
     return {};
@@ -38,7 +139,7 @@ function loadEntries() {
 }
 
 function saveEntries(entries) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeEntries(entries)));
 }
 
 function sortedEntries(entries) {
@@ -68,7 +169,31 @@ function formatTimestamp(timestamp) {
 
 function setMessage(message, isError = false) {
   formMessage.textContent = message;
-  formMessage.dataset.state = isError ? 'error' : 'success';
+  formMessage.dataset.state = message ? (isError ? 'error' : 'success') : '';
+}
+
+function totalCaloriesForFood(food) {
+  return MEAL_KEYS.reduce((total, meal) => total + parseCalories(food[meal]?.cal), 0);
+}
+
+function readFoodFromForm() {
+  const food = emptyFood();
+
+  MEAL_KEYS.forEach((meal) => {
+    food[meal] = {
+      text: foodInputs[meal].text.value.trim(),
+      cal: parseCalories(foodInputs[meal].cal.value),
+    };
+  });
+
+  return food;
+}
+
+function renderCalorieSummary(food) {
+  const total = totalCaloriesForFood(food);
+  caloriesTotal.textContent = String(total);
+  caloriesTarget.textContent = String(TARGET_CALORIES);
+  caloriesRemaining.textContent = String(TARGET_CALORIES - total);
 }
 
 function validateEntry(entry) {
@@ -88,24 +213,41 @@ function validateEntry(entry) {
 }
 
 function getFormEntry() {
-  const workout = form.elements.workout.value;
   return {
     date: dateInput.value,
     energy: Number(energyInput.value),
-    sleep: Number(sleepInput.value),
-    workout,
+    sleep: sleepInput.value === '' ? NaN : Number(sleepInput.value),
+    workout: form.elements.workout.value,
     notes: notesInput.value.trim(),
     updatedAt: timestampString(),
+    food: readFoodFromForm(),
   };
 }
 
-function resetFormForNextEntry() {
-  dateInput.value = todayString();
-  energyInput.value = '5';
+function fillFoodFields(food) {
+  MEAL_KEYS.forEach((meal) => {
+    const mealEntry = food[meal] || { text: '', cal: 0 };
+    foodInputs[meal].text.value = mealEntry.text || '';
+    foodInputs[meal].cal.value = mealEntry.cal > 0 ? String(mealEntry.cal) : '';
+  });
+}
+
+function fillForm(entry) {
+  const normalized = normalizeEntry(entry);
+
+  dateInput.value = normalized.date || todayString();
+  energyInput.value = String(normalized.energy || 5);
   energyValue.textContent = energyInput.value;
-  sleepInput.value = '';
-  form.elements.workout.value = 'yes';
-  notesInput.value = '';
+  sleepInput.value = normalized.sleep === '' ? '' : String(normalized.sleep);
+  form.elements.workout.value = normalized.workout;
+  notesInput.value = normalized.notes;
+  fillFoodFields(normalized.food);
+  renderCalorieSummary(normalized.food);
+}
+
+function entryForDate(dateString) {
+  const entries = loadEntries();
+  return entries[dateString] || defaultEntry(dateString);
 }
 
 function renderEntries(entries) {
@@ -116,25 +258,31 @@ function renderEntries(entries) {
     return;
   }
 
-  entriesList.innerHTML = recent.map((entry) => `
-    <li class="entry">
-      <div class="entry-top">
-        <strong>${formatDate(entry.date)}</strong>
-        <span>Energy ${entry.energy}/10</span>
-      </div>
-      <div class="entry-meta">
-        <span>Sleep ${entry.sleep}h</span>
-        <span>Workout ${entry.workout === 'yes' ? 'Yes' : 'No'}</span>
-        <span>${escapeHtml(formatTimestamp(entry.updatedAt))}</span>
-      </div>
-      ${entry.notes ? `<p class="entry-notes">${escapeHtml(entry.notes)}</p>` : ''}
-    </li>
-  `).join('');
+  entriesList.innerHTML = recent.map((entry) => {
+    const normalized = normalizeEntry(entry);
+    const totalCalories = totalCaloriesForFood(normalized.food);
+
+    return `
+      <li class="entry">
+        <div class="entry-top">
+          <strong>${formatDate(normalized.date)}</strong>
+          <span>Energy ${normalized.energy}/10</span>
+        </div>
+        <div class="entry-meta">
+          <span>Sleep ${normalized.sleep === '' ? '-' : `${normalized.sleep}h`}</span>
+          <span>Workout ${normalized.workout === 'yes' ? 'Yes' : 'No'}</span>
+          <span>cals ${totalCalories}</span>
+          <span>${escapeHtml(formatTimestamp(normalized.updatedAt))}</span>
+        </div>
+        ${normalized.notes ? `<p class="entry-notes">${escapeHtml(normalized.notes)}</p>` : ''}
+      </li>
+    `;
+  }).join('');
 }
 
 function lastNDaysEntries(entries, count) {
   return sortedEntries(entries)
-    .slice(0)
+    .slice()
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(-count);
 }
@@ -158,21 +306,13 @@ function renderChart(entries) {
     datasets: [
       {
         label: 'Energy',
-        data: chartEntries.map((entry) => entry.energy),
+        data: chartEntries.map((entry) => normalizeEntry(entry).energy),
         borderColor: '#ef7d23',
         backgroundColor: 'rgba(239, 125, 35, 0.14)',
         tension: 0.35,
         pointBackgroundColor: '#ef7d23',
         pointBorderColor: '#ef7d23',
-      },
-      {
-        label: 'Sleep',
-        data: chartEntries.map((entry) => entry.sleep),
-        borderColor: '#3f83f8',
-        backgroundColor: 'rgba(63, 131, 248, 0.14)',
-        tension: 0.35,
-        pointBackgroundColor: '#3f83f8',
-        pointBorderColor: '#3f83f8',
+        fill: false,
       },
     ],
   };
@@ -197,11 +337,11 @@ function renderChart(entries) {
         y: {
           beginAtZero: true,
           min: 0,
-          max: 24,
-          ticks: { stepSize: 4 },
+          max: 10,
+          ticks: { stepSize: 2 },
           title: {
             display: true,
-            text: 'Energy / Sleep Hours',
+            text: 'Energy',
           },
         },
       },
@@ -229,8 +369,23 @@ function escapeHtml(value) {
   return div.innerHTML;
 }
 
+function loadEntryIntoForm(dateString) {
+  fillForm(entryForDate(dateString));
+}
+
 energyInput.addEventListener('input', () => {
   energyValue.textContent = energyInput.value;
+});
+
+dateInput.addEventListener('change', () => {
+  loadEntryIntoForm(dateInput.value || todayString());
+  setMessage('');
+});
+
+MEAL_KEYS.forEach((meal) => {
+  foodInputs[meal].cal.addEventListener('input', () => {
+    renderCalorieSummary(readFoodFromForm());
+  });
 });
 
 form.addEventListener('submit', (event) => {
@@ -246,11 +401,11 @@ form.addEventListener('submit', (event) => {
 
   const entries = loadEntries();
   const existed = Boolean(entries[entry.date]);
-  entries[entry.date] = entry;
+  entries[entry.date] = normalizeEntry(entry);
   saveEntries(entries);
   renderAll();
+  fillForm(entries[entry.date]);
   setMessage(existed ? 'Entry updated.' : 'Entry saved.');
-  resetFormForNextEntry();
 });
 
 clearButton.addEventListener('click', () => {
@@ -261,12 +416,11 @@ clearButton.addEventListener('click', () => {
 
   localStorage.removeItem(STORAGE_KEY);
   renderAll();
-  resetFormForNextEntry();
+  fillForm(defaultEntry(todayString()));
   setMessage('All entries cleared.');
 });
 
-dateInput.value = todayString();
-energyValue.textContent = energyInput.value;
+loadEntryIntoForm(todayString());
 renderAll();
 
 if ('serviceWorker' in navigator) {
