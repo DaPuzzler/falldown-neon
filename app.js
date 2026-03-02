@@ -5,6 +5,7 @@ const MAX_RECENT_ENTRIES = 10;
 const form = document.getElementById('entry-form');
 const dateInput = document.getElementById('date');
 const energyInput = document.getElementById('energy');
+const energyValue = document.getElementById('energy-value');
 const sleepInput = document.getElementById('sleep');
 const notesInput = document.getElementById('notes');
 const clearButton = document.getElementById('clear-button');
@@ -16,7 +17,15 @@ const chartFallback = document.getElementById('chart-fallback');
 let trendChart;
 
 function todayString() {
-  return new Date().toISOString().split('T')[0];
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function timestampString() {
+  return new Date().toISOString();
 }
 
 function loadEntries() {
@@ -41,6 +50,19 @@ function formatDate(dateString) {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
+  });
+}
+
+function formatTimestamp(timestamp) {
+  if (!timestamp) {
+    return 'Saved previously';
+  }
+
+  return new Date(timestamp).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
   });
 }
 
@@ -73,12 +95,14 @@ function getFormEntry() {
     sleep: Number(sleepInput.value),
     workout,
     notes: notesInput.value.trim(),
+    updatedAt: timestampString(),
   };
 }
 
 function resetFormForNextEntry() {
   dateInput.value = todayString();
-  energyInput.value = '';
+  energyInput.value = '5';
+  energyValue.textContent = energyInput.value;
   sleepInput.value = '';
   form.elements.workout.value = 'yes';
   notesInput.value = '';
@@ -101,6 +125,7 @@ function renderEntries(entries) {
       <div class="entry-meta">
         <span>Sleep ${entry.sleep}h</span>
         <span>Workout ${entry.workout === 'yes' ? 'Yes' : 'No'}</span>
+        <span>${escapeHtml(formatTimestamp(entry.updatedAt))}</span>
       </div>
       ${entry.notes ? `<p class="entry-notes">${escapeHtml(entry.notes)}</p>` : ''}
     </li>
@@ -134,18 +159,20 @@ function renderChart(entries) {
       {
         label: 'Energy',
         data: chartEntries.map((entry) => entry.energy),
-        borderColor: '#2a6f5f',
-        backgroundColor: 'rgba(42, 111, 95, 0.12)',
+        borderColor: '#ef7d23',
+        backgroundColor: 'rgba(239, 125, 35, 0.14)',
         tension: 0.35,
-        yAxisID: 'y',
+        pointBackgroundColor: '#ef7d23',
+        pointBorderColor: '#ef7d23',
       },
       {
         label: 'Sleep',
         data: chartEntries.map((entry) => entry.sleep),
-        borderColor: '#8aa79e',
-        backgroundColor: 'rgba(138, 167, 158, 0.12)',
+        borderColor: '#3f83f8',
+        backgroundColor: 'rgba(63, 131, 248, 0.14)',
         tension: 0.35,
-        yAxisID: 'y1',
+        pointBackgroundColor: '#3f83f8',
+        pointBorderColor: '#3f83f8',
       },
     ],
   };
@@ -161,18 +188,21 @@ function renderChart(entries) {
       responsive: true,
       maintainAspectRatio: false,
       scales: {
+        x: {
+          title: {
+            display: true,
+            text: 'Date',
+          },
+        },
         y: {
           beginAtZero: true,
           min: 0,
-          max: 10,
-          ticks: { stepSize: 2 },
-        },
-        y1: {
-          beginAtZero: true,
-          min: 0,
           max: 24,
-          position: 'right',
-          grid: { drawOnChartArea: false },
+          ticks: { stepSize: 4 },
+          title: {
+            display: true,
+            text: 'Energy / Sleep Hours',
+          },
         },
       },
       plugins: {
@@ -198,6 +228,10 @@ function escapeHtml(value) {
   div.textContent = value;
   return div.innerHTML;
 }
+
+energyInput.addEventListener('input', () => {
+  energyValue.textContent = energyInput.value;
+});
 
 form.addEventListener('submit', (event) => {
   event.preventDefault();
@@ -232,6 +266,7 @@ clearButton.addEventListener('click', () => {
 });
 
 dateInput.value = todayString();
+energyValue.textContent = energyInput.value;
 renderAll();
 
 if ('serviceWorker' in navigator) {

@@ -16,9 +16,12 @@
 <body>
   <main class="app-shell">
     <header class="hero">
-      <p class="eyebrow">Daily check-in</p>
-      <h1>Dad Energy Meter</h1>
-      <p class="subtitle">Track energy, sleep, and workouts with a low-friction daily log.</p>
+      <div class="hero-copy">
+        <p class="eyebrow">Daily check-in</p>
+        <h1>Dad Energy Meter</h1>
+        <p class="subtitle">Track energy, sleep, and workouts with a low-friction daily log.</p>
+      </div>
+      <img class="hero-art" src="dad-energy-hero.svg" alt="Illustrated gauge showing calm dad energy with coffee, sunrise, and workout icons.">
     </header>
 
     <section class="panel">
@@ -30,7 +33,10 @@
 
         <div class="field">
           <label for="energy">Energy (1-10)</label>
-          <input id="energy" name="energy" type="number" min="1" max="10" inputmode="numeric" required>
+          <div class="slider-row">
+            <input id="energy" name="energy" type="range" min="1" max="10" step="1" value="5" required>
+            <output id="energy-value" class="slider-value" for="energy">5</output>
+          </div>
         </div>
 
         <div class="field">
@@ -69,7 +75,7 @@
     <section class="panel">
       <div class="section-heading">
         <h2>Last 7 Days</h2>
-        <p>Energy and sleep trend.</p>
+        <p>Energy and sleep trend on one shared scale.</p>
       </div>
       <div class="chart-wrap">
         <canvas id="trend-chart" aria-label="Energy and sleep chart"></canvas>
