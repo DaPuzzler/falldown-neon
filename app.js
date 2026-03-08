@@ -24,6 +24,8 @@ const BALL_ACCELERATION = 1280;
 const BALL_DRAG = 7.2;
 const MAX_HORIZONTAL_SPEED = 235;
 const GRAVITY = 1180;
+const MAX_PHYSICS_TRAVEL_PER_STEP = 12;
+const MAX_PHYSICS_SUBSTEPS = 6;
 
 const canvas = document.getElementById('game-canvas');
 const context = canvas.getContext('2d');
@@ -137,6 +139,149 @@ const DIFFICULTY_LEVELS = {
     maxHorizontalSpeed: 308,
   },
 };
+
+const WORLD_BANDS = [
+  {
+    topColor: [7, 21, 43],
+    midColor: [4, 15, 30],
+    bottomColor: [2, 5, 11],
+    glowColor: [89, 243, 255],
+    accentColor: [255, 78, 221],
+    alertColor: [255, 204, 92],
+    dustColor: [160, 220, 255],
+    gridStrength: 0.95,
+    panelStrength: 0.92,
+    pipeStrength: 0.84,
+    ruinStrength: 0.08,
+    magmaStrength: 0,
+    alienStrength: 0.04,
+    chevronStrength: 0.9,
+    instability: 0.08,
+    particleStrength: 0.18,
+    ringStrength: 0.24,
+    cityGlowStrength: 0.92,
+  },
+  {
+    topColor: [16, 19, 28],
+    midColor: [14, 15, 21],
+    bottomColor: [7, 7, 11],
+    glowColor: [255, 144, 76],
+    accentColor: [255, 83, 83],
+    alertColor: [255, 210, 104],
+    dustColor: [210, 197, 150],
+    gridStrength: 0.55,
+    panelStrength: 0.98,
+    pipeStrength: 0.95,
+    ruinStrength: 0.18,
+    magmaStrength: 0.02,
+    alienStrength: 0.05,
+    chevronStrength: 0.72,
+    instability: 0.16,
+    particleStrength: 0.28,
+    ringStrength: 0.18,
+    cityGlowStrength: 0.34,
+  },
+  {
+    topColor: [34, 20, 18],
+    midColor: [28, 20, 19],
+    bottomColor: [12, 10, 13],
+    glowColor: [214, 124, 62],
+    accentColor: [133, 168, 184],
+    alertColor: [255, 183, 94],
+    dustColor: [184, 150, 118],
+    gridStrength: 0.22,
+    panelStrength: 0.72,
+    pipeStrength: 0.68,
+    ruinStrength: 0.82,
+    magmaStrength: 0.16,
+    alienStrength: 0.08,
+    chevronStrength: 0.28,
+    instability: 0.24,
+    particleStrength: 0.34,
+    ringStrength: 0.26,
+    cityGlowStrength: 0.06,
+  },
+  {
+    topColor: [22, 10, 8],
+    midColor: [29, 11, 9],
+    bottomColor: [7, 4, 5],
+    glowColor: [255, 116, 30],
+    accentColor: [255, 193, 71],
+    alertColor: [151, 255, 143],
+    dustColor: [255, 168, 92],
+    gridStrength: 0.05,
+    panelStrength: 0.44,
+    pipeStrength: 0.4,
+    ruinStrength: 0.64,
+    magmaStrength: 0.92,
+    alienStrength: 0.12,
+    chevronStrength: 0.08,
+    instability: 0.42,
+    particleStrength: 0.54,
+    ringStrength: 0.28,
+    cityGlowStrength: 0,
+  },
+  {
+    topColor: [25, 11, 14],
+    midColor: [18, 13, 19],
+    bottomColor: [6, 5, 9],
+    glowColor: [110, 245, 255],
+    accentColor: [183, 104, 255],
+    alertColor: [255, 164, 82],
+    dustColor: [223, 232, 255],
+    gridStrength: 0.08,
+    panelStrength: 0.36,
+    pipeStrength: 0.26,
+    ruinStrength: 0.28,
+    magmaStrength: 0.56,
+    alienStrength: 0.54,
+    chevronStrength: 0.05,
+    instability: 0.5,
+    particleStrength: 0.6,
+    ringStrength: 0.62,
+    cityGlowStrength: 0,
+  },
+  {
+    topColor: [8, 7, 18],
+    midColor: [5, 7, 15],
+    bottomColor: [2, 3, 8],
+    glowColor: [96, 242, 255],
+    accentColor: [189, 98, 255],
+    alertColor: [164, 255, 129],
+    dustColor: [209, 227, 255],
+    gridStrength: 0.12,
+    panelStrength: 0.15,
+    pipeStrength: 0.08,
+    ruinStrength: 0.04,
+    magmaStrength: 0.16,
+    alienStrength: 0.96,
+    chevronStrength: 0,
+    instability: 0.68,
+    particleStrength: 0.74,
+    ringStrength: 0.98,
+    cityGlowStrength: 0,
+  },
+  {
+    topColor: [17, 10, 24],
+    midColor: [12, 8, 19],
+    bottomColor: [5, 3, 9],
+    glowColor: [255, 255, 255],
+    accentColor: [102, 190, 255],
+    alertColor: [255, 204, 96],
+    dustColor: [255, 240, 212],
+    gridStrength: 0.08,
+    panelStrength: 0.02,
+    pipeStrength: 0,
+    ruinStrength: 0,
+    magmaStrength: 0.12,
+    alienStrength: 1,
+    chevronStrength: 0,
+    instability: 0.9,
+    particleStrength: 0.94,
+    ringStrength: 1,
+    cityGlowStrength: 0,
+  },
+];
 
 const LOOP_CHORDS = [
   { root: 45, tones: [57, 60, 64] },
@@ -333,6 +478,87 @@ function clamp(value, min, max) {
 
 function lerp(start, end, amount) {
   return start + (end - start) * amount;
+}
+
+function smoothstep(edge0, edge1, value) {
+  const amount = clamp((value - edge0) / (edge1 - edge0), 0, 1);
+  return amount * amount * (3 - 2 * amount);
+}
+
+function fract(value) {
+  return value - Math.floor(value);
+}
+
+function randomFromSeed(seed) {
+  return fract(Math.sin(seed * 127.1 + 311.7) * 43758.5453123);
+}
+
+function mixRgb(start, end, amount) {
+  return [
+    lerp(start[0], end[0], amount),
+    lerp(start[1], end[1], amount),
+    lerp(start[2], end[2], amount),
+  ];
+}
+
+function rgbToString(rgb, alpha = 1) {
+  const rounded = rgb.map((value) => Math.round(clamp(value, 0, 255)));
+  return `rgba(${rounded[0]}, ${rounded[1]}, ${rounded[2]}, ${alpha})`;
+}
+
+function blendBandColor(weights, key) {
+  return weights.reduce((color, weight, index) => {
+    const source = WORLD_BANDS[index][key];
+    color[0] += source[0] * weight;
+    color[1] += source[1] * weight;
+    color[2] += source[2] * weight;
+    return color;
+  }, [0, 0, 0]);
+}
+
+function blendBandValue(weights, key) {
+  return weights.reduce((total, weight, index) => total + WORLD_BANDS[index][key] * weight, 0);
+}
+
+function getWorldTheme() {
+  const depth = clamp((game.level - 1) / 12, 0, WORLD_BANDS.length - 1);
+  const weights = WORLD_BANDS.map((_, index) => {
+    const proximity = clamp(1 - Math.abs(depth - index), 0, 1);
+    return proximity * proximity * (3 - 2 * proximity);
+  });
+  const totalWeight = weights.reduce((total, weight) => total + weight, 0) || 1;
+  const normalizedWeights = weights.map((weight) => weight / totalWeight);
+
+  return {
+    depth,
+    topColor: blendBandColor(normalizedWeights, 'topColor'),
+    midColor: blendBandColor(normalizedWeights, 'midColor'),
+    bottomColor: blendBandColor(normalizedWeights, 'bottomColor'),
+    glowColor: blendBandColor(normalizedWeights, 'glowColor'),
+    accentColor: blendBandColor(normalizedWeights, 'accentColor'),
+    alertColor: blendBandColor(normalizedWeights, 'alertColor'),
+    dustColor: blendBandColor(normalizedWeights, 'dustColor'),
+    gridStrength: blendBandValue(normalizedWeights, 'gridStrength'),
+    panelStrength: blendBandValue(normalizedWeights, 'panelStrength'),
+    pipeStrength: blendBandValue(normalizedWeights, 'pipeStrength'),
+    ruinStrength: blendBandValue(normalizedWeights, 'ruinStrength'),
+    magmaStrength: blendBandValue(normalizedWeights, 'magmaStrength'),
+    alienStrength: blendBandValue(normalizedWeights, 'alienStrength'),
+    chevronStrength: blendBandValue(normalizedWeights, 'chevronStrength'),
+    instability: blendBandValue(normalizedWeights, 'instability'),
+    particleStrength: blendBandValue(normalizedWeights, 'particleStrength'),
+    ringStrength: blendBandValue(normalizedWeights, 'ringStrength'),
+    cityGlowStrength: blendBandValue(normalizedWeights, 'cityGlowStrength'),
+    zoneWeights: {
+      surface: normalizedWeights[0],
+      maintenance: normalizedWeights[1],
+      ruins: normalizedWeights[2],
+      magma: normalizedWeights[3],
+      interface: normalizedWeights[4],
+      alien: normalizedWeights[5],
+      core: normalizedWeights[6],
+    },
+  };
 }
 
 function midiToFrequency(note) {
@@ -1151,91 +1377,480 @@ function resolveFloorCollisions(previousY, scrollStep) {
 
 function updateGame(deltaTime) {
   updateDifficulty();
-  const scrollStep = game.scrollSpeed * deltaTime;
+  const estimatedTravel =
+    game.scrollSpeed * deltaTime +
+    Math.abs(game.ball.vy) * deltaTime +
+    0.5 * GRAVITY * deltaTime * deltaTime;
+  const substeps = clamp(
+    Math.ceil(estimatedTravel / MAX_PHYSICS_TRAVEL_PER_STEP),
+    1,
+    MAX_PHYSICS_SUBSTEPS
+  );
+  const stepDelta = deltaTime / substeps;
 
-  game.floors.forEach((floor) => {
-    floor.y -= scrollStep;
-  });
+  for (let step = 0; step < substeps; step += 1) {
+    const scrollStep = game.scrollSpeed * stepDelta;
 
-  recycleFloors();
-  updateInputAxis(deltaTime);
+    game.floors.forEach((floor) => {
+      floor.y -= scrollStep;
+    });
 
-  game.ball.vy += GRAVITY * deltaTime;
-  const previousY = game.ball.y;
-
-  game.ball.x += game.ball.vx * deltaTime;
-  game.ball.y += game.ball.vy * deltaTime;
-
-  game.ball.x = clamp(game.ball.x, BALL_RADIUS, GAME_WIDTH - BALL_RADIUS);
-  resolveFloorCollisions(previousY, scrollStep);
-
-  const rescueLine = GAME_HEIGHT - FLOOR_SPACING * 1.18;
-  const visibleLine = GAME_HEIGHT - BALL_RADIUS * 1.35;
-  const rescueOverflow = Math.max(0, game.ball.y - rescueLine);
-
-  if (rescueOverflow > 0) {
-    const targetCatchUpSpeed = rescueOverflow * 10 + game.scrollSpeed * 0.55;
-    const catchUpBlend = 1 - Math.exp(-8 * deltaTime);
-    const minimumVisibleShift = Math.max(0, game.ball.y - visibleLine);
-
-    game.catchUpSpeed = lerp(game.catchUpSpeed, targetCatchUpSpeed, catchUpBlend);
-
-    shiftWorldUp(
-      Math.max(
-        minimumVisibleShift,
-        Math.min(rescueOverflow, game.catchUpSpeed * deltaTime)
-      )
-    );
     recycleFloors();
-  } else if (game.catchUpSpeed > 0.1) {
-    game.catchUpSpeed *= Math.exp(-10 * deltaTime);
+    updateInputAxis(stepDelta);
+
+    game.ball.vy += GRAVITY * stepDelta;
+    const previousY = game.ball.y;
+
+    game.ball.x += game.ball.vx * stepDelta;
+    game.ball.y += game.ball.vy * stepDelta;
+
+    game.ball.x = clamp(game.ball.x, BALL_RADIUS, GAME_WIDTH - BALL_RADIUS);
+    resolveFloorCollisions(previousY, scrollStep);
+
+    const rescueLine = GAME_HEIGHT - FLOOR_SPACING * 1.18;
+    const visibleLine = GAME_HEIGHT - BALL_RADIUS * 1.35;
+    const rescueOverflow = Math.max(0, game.ball.y - rescueLine);
+
+    if (rescueOverflow > 0) {
+      const targetCatchUpSpeed = rescueOverflow * 10 + game.scrollSpeed * 0.55;
+      const catchUpBlend = 1 - Math.exp(-8 * stepDelta);
+      const minimumVisibleShift = Math.max(0, game.ball.y - visibleLine);
+
+      game.catchUpSpeed = lerp(game.catchUpSpeed, targetCatchUpSpeed, catchUpBlend);
+
+      shiftWorldUp(
+        Math.max(
+          minimumVisibleShift,
+          Math.min(rescueOverflow, game.catchUpSpeed * stepDelta)
+        )
+      );
+      recycleFloors();
+    } else if (game.catchUpSpeed > 0.1) {
+      game.catchUpSpeed *= Math.exp(-10 * stepDelta);
+    }
+
+    if (game.ball.y - BALL_RADIUS <= 0) {
+      endGame('You were pinned against the ceiling by the rising grid.');
+      break;
+    }
   }
 
   updateTrail();
 
+  if (game.gameOver) {
+    return;
+  }
+
   game.elapsed += deltaTime;
   game.score += deltaTime * getDifficultyConfig().scoreRate;
-
-  if (game.ball.y - BALL_RADIUS <= 0) {
-    endGame('You were pinned against the ceiling by the rising grid.');
-  }
 }
 
-function drawBackground() {
+function drawChevronStrip(x, y, width, height, color, alpha, reverse = false) {
+  if (width <= 0 || height <= 0) {
+    return;
+  }
+
+  const segment = Math.max(10, width / 4.5);
+  context.save();
+  context.fillStyle = rgbToString(color, alpha);
+
+  for (let offset = -segment; offset < width + segment; offset += segment * 1.18) {
+    const startX = reverse ? x + width - offset : x + offset;
+    context.beginPath();
+    context.moveTo(startX, y);
+    context.lineTo(startX + segment * (reverse ? -0.9 : 0.9), y);
+    context.lineTo(startX + segment * (reverse ? -0.32 : 0.32), y + height * 0.5);
+    context.lineTo(startX + segment * (reverse ? -0.9 : 0.9), y + height);
+    context.lineTo(startX, y + height);
+    context.closePath();
+    context.fill();
+  }
+
+  context.restore();
+}
+
+function drawWorldGradient(theme, time) {
   const bgGradient = context.createLinearGradient(0, 0, 0, GAME_HEIGHT);
-  bgGradient.addColorStop(0, '#061226');
-  bgGradient.addColorStop(0.52, '#04101d');
-  bgGradient.addColorStop(1, '#01040a');
+  bgGradient.addColorStop(0, rgbToString(theme.topColor));
+  bgGradient.addColorStop(0.46, rgbToString(theme.midColor));
+  bgGradient.addColorStop(1, rgbToString(theme.bottomColor));
   context.fillStyle = bgGradient;
   context.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-  context.save();
-  context.globalAlpha = 0.2;
-  context.strokeStyle = '#59f3ff';
-  context.lineWidth = 1;
+  const upperGlow = context.createRadialGradient(
+    GAME_WIDTH * 0.5,
+    -20,
+    0,
+    GAME_WIDTH * 0.5,
+    0,
+    GAME_WIDTH * 0.88
+  );
+  upperGlow.addColorStop(0, rgbToString(theme.glowColor, 0.18 + theme.cityGlowStrength * 0.16));
+  upperGlow.addColorStop(1, rgbToString(theme.glowColor, 0));
+  context.fillStyle = upperGlow;
+  context.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT * 0.42);
 
-  for (let x = 0; x <= GAME_WIDTH; x += 24) {
+  const lowerGlow = context.createRadialGradient(
+    GAME_WIDTH * 0.5,
+    GAME_HEIGHT + 40,
+    8,
+    GAME_WIDTH * 0.5,
+    GAME_HEIGHT,
+    GAME_WIDTH
+  );
+  const coreBlend = theme.zoneWeights.core;
+  const geothermalColor = mixRgb(theme.alertColor, theme.glowColor, 0.32 + coreBlend * 0.4);
+  lowerGlow.addColorStop(0, rgbToString(geothermalColor, 0.12 + theme.magmaStrength * 0.18 + coreBlend * 0.28));
+  lowerGlow.addColorStop(1, rgbToString(geothermalColor, 0));
+  context.fillStyle = lowerGlow;
+  context.fillRect(0, GAME_HEIGHT * 0.2, GAME_WIDTH, GAME_HEIGHT * 0.8);
+
+  if (theme.gridStrength > 0.03) {
+    context.save();
+    context.globalAlpha = 0.05 + theme.gridStrength * 0.12;
+    context.strokeStyle = rgbToString(mixRgb(theme.glowColor, theme.accentColor, 0.2), 1);
+    context.lineWidth = 1;
+
+    for (let x = 0; x <= GAME_WIDTH; x += 24) {
+      context.beginPath();
+      context.moveTo(x, 0);
+      context.lineTo(x, GAME_HEIGHT);
+      context.stroke();
+    }
+
+    for (let y = ((time * 42) % 24) - 24; y <= GAME_HEIGHT + 24; y += 24) {
+      context.beginPath();
+      context.moveTo(0, y);
+      context.lineTo(GAME_WIDTH, y);
+      context.stroke();
+    }
+
+    context.restore();
+  }
+}
+
+function drawFarShaft(theme, time) {
+  const humanWeight = theme.zoneWeights.surface + theme.zoneWeights.maintenance + theme.zoneWeights.ruins;
+  const sideShade = mixRgb(theme.bottomColor, [0, 0, 0], 0.58);
+  const vignette = context.createLinearGradient(0, 0, GAME_WIDTH, 0);
+  vignette.addColorStop(0, rgbToString(sideShade, 0.72));
+  vignette.addColorStop(0.18, rgbToString(sideShade, 0.22));
+  vignette.addColorStop(0.5, rgbToString(theme.bottomColor, 0.03));
+  vignette.addColorStop(0.82, rgbToString(sideShade, 0.22));
+  vignette.addColorStop(1, rgbToString(sideShade, 0.72));
+  context.fillStyle = vignette;
+  context.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+  const structuralColor = mixRgb(theme.midColor, theme.glowColor, 0.24);
+  const panelColor = mixRgb(theme.midColor, theme.alertColor, 0.2);
+  const speed = 16 + theme.instability * 34;
+
+  for (let index = 0; index < 8; index += 1) {
+    const seed = index * 13.7 + 4.2;
+    const y = ((index * 98 + time * speed) % (GAME_HEIGHT + 140)) - 140;
+    const leftWidth = 28 + randomFromSeed(seed) * 36 + theme.panelStrength * 18;
+    const rightWidth = 28 + randomFromSeed(seed + 2) * 36 + theme.panelStrength * 18;
+    const blockHeight = 26 + randomFromSeed(seed + 3) * 30 + theme.ruinStrength * 18;
+
+    context.fillStyle = rgbToString(panelColor, 0.08 + theme.panelStrength * 0.18);
+    context.fillRect(0, y, leftWidth, blockHeight);
+    context.fillRect(GAME_WIDTH - rightWidth, y, rightWidth, blockHeight);
+
+    if (theme.chevronStrength > 0.04) {
+      drawChevronStrip(0, y + 3, Math.min(leftWidth, 56), blockHeight - 6, theme.alertColor, 0.05 + theme.chevronStrength * 0.12);
+      drawChevronStrip(
+        GAME_WIDTH - Math.min(rightWidth, 56),
+        y + 3,
+        Math.min(rightWidth, 56),
+        blockHeight - 6,
+        theme.alertColor,
+        0.05 + theme.chevronStrength * 0.12,
+        true
+      );
+    }
+  }
+
+  if (theme.pipeStrength > 0.05) {
+    context.save();
+    context.strokeStyle = rgbToString(structuralColor, 0.08 + theme.pipeStrength * 0.18);
+    context.lineWidth = 2;
+
+    [34, 52, 74, GAME_WIDTH - 34, GAME_WIDTH - 52, GAME_WIDTH - 74].forEach((x, index) => {
+      context.beginPath();
+      context.moveTo(x, -20);
+      context.lineTo(x, GAME_HEIGHT + 20);
+      context.stroke();
+
+      for (let joint = 0; joint < 8; joint += 1) {
+        const y = ((joint * 88 + time * (18 + index * 2)) % (GAME_HEIGHT + 60)) - 30;
+        context.beginPath();
+        context.moveTo(x - 8, y);
+        context.lineTo(x + 8, y);
+        context.stroke();
+      }
+    });
+
+    context.restore();
+  }
+
+  if (humanWeight > 0.1 || theme.ringStrength > 0.12) {
+    context.save();
+    context.strokeStyle = rgbToString(mixRgb(theme.glowColor, theme.accentColor, 0.4), 0.06 + theme.ringStrength * 0.12);
+    context.lineWidth = 2;
+
+    for (let index = 0; index < 5; index += 1) {
+      const seed = index * 7.11 + 0.8;
+      const y = ((index * 144 + time * (12 + theme.instability * 8)) % (GAME_HEIGHT + 220)) - 110;
+      const radiusX = 108 + randomFromSeed(seed) * 70 + theme.zoneWeights.alien * 26;
+      const radiusY = 22 + randomFromSeed(seed + 1) * 18 + theme.zoneWeights.alien * 12;
+      context.beginPath();
+      context.ellipse(GAME_WIDTH * 0.5, y, radiusX, radiusY, 0, 0, Math.PI * 2);
+      context.stroke();
+    }
+
+    context.restore();
+  }
+}
+
+function drawRuinsAndTransit(theme, time) {
+  if (theme.ruinStrength <= 0.04) {
+    return;
+  }
+
+  context.save();
+  context.strokeStyle = rgbToString(mixRgb(theme.alertColor, theme.dustColor, 0.45), 0.08 + theme.ruinStrength * 0.16);
+  context.lineWidth = 2;
+
+  for (let index = 0; index < 4; index += 1) {
+    const y = ((index * 172 + time * 14) % (GAME_HEIGHT + 220)) - 120;
     context.beginPath();
-    context.moveTo(x, 0);
-    context.lineTo(x, GAME_HEIGHT);
+    context.moveTo(36, y + 46);
+    context.quadraticCurveTo(GAME_WIDTH * 0.5, y - 34, GAME_WIDTH - 36, y + 46);
+    context.stroke();
+
+    context.beginPath();
+    context.moveTo(58, y + 62);
+    context.lineTo(118, y + 22);
+    context.lineTo(158, y + 62);
+    context.moveTo(GAME_WIDTH - 58, y + 62);
+    context.lineTo(GAME_WIDTH - 118, y + 22);
+    context.lineTo(GAME_WIDTH - 158, y + 62);
     context.stroke();
   }
 
-  for (let y = 0; y <= GAME_HEIGHT; y += 24) {
+  context.restore();
+}
+
+function drawMagmaLayer(theme, time) {
+  if (theme.magmaStrength <= 0.03) {
+    return;
+  }
+
+  const lavaColor = mixRgb(theme.alertColor, theme.glowColor, 0.2);
+  const crackColor = mixRgb(theme.glowColor, theme.accentColor, 0.18);
+  const heatGradient = context.createLinearGradient(0, GAME_HEIGHT * 0.4, 0, GAME_HEIGHT);
+  heatGradient.addColorStop(0, rgbToString(lavaColor, 0));
+  heatGradient.addColorStop(1, rgbToString(lavaColor, 0.1 + theme.magmaStrength * 0.24));
+  context.fillStyle = heatGradient;
+  context.fillRect(0, GAME_HEIGHT * 0.35, GAME_WIDTH, GAME_HEIGHT * 0.65);
+
+  for (let index = 0; index < 5; index += 1) {
+    const seed = index * 9.7 + 6.2;
+    const startX = 32 + randomFromSeed(seed) * (GAME_WIDTH - 64);
+    const depth = 150 + randomFromSeed(seed + 1) * 210 + theme.zoneWeights.core * 90;
+
     context.beginPath();
-    context.moveTo(0, y);
-    context.lineTo(GAME_WIDTH, y);
+    context.moveTo(startX, GAME_HEIGHT + 10);
+    for (let step = 0; step <= 6; step += 1) {
+      const progress = step / 6;
+      const y = GAME_HEIGHT - depth * progress;
+      const wobble = Math.sin(time * (1.6 + randomFromSeed(seed + 2) * 1.2) + step * 0.8 + seed) * (8 + theme.magmaStrength * 10);
+      const x = startX + wobble + (randomFromSeed(seed + step + 3) - 0.5) * 24;
+      context.lineTo(x, y);
+    }
+    context.lineTo(startX + 12, GAME_HEIGHT + 10);
+    context.closePath();
+    context.fillStyle = rgbToString(crackColor, 0.08 + theme.magmaStrength * 0.14);
+    context.fill();
+  }
+
+  context.save();
+  context.strokeStyle = rgbToString(mixRgb(lavaColor, [255, 255, 255], 0.16), 0.12 + theme.magmaStrength * 0.16);
+  context.lineWidth = 1.5;
+  for (let index = 0; index < 6; index += 1) {
+    const yBase = GAME_HEIGHT - 40 - index * 24;
+    context.beginPath();
+    for (let x = 0; x <= GAME_WIDTH; x += 18) {
+      const wave = Math.sin(x * 0.038 + time * 2.1 + index * 0.8) * (3 + theme.instability * 5);
+      if (x === 0) {
+        context.moveTo(x, yBase + wave);
+      } else {
+        context.lineTo(x, yBase + wave);
+      }
+    }
     context.stroke();
+  }
+  context.restore();
+}
+
+function drawAlienArchitecture(theme, time) {
+  if (theme.alienStrength <= 0.04 && theme.ringStrength <= 0.1) {
+    return;
+  }
+
+  const energyColor = mixRgb(theme.glowColor, theme.accentColor, 0.42);
+  const glyphColor = mixRgb(theme.dustColor, theme.glowColor, 0.5);
+  const centerX = GAME_WIDTH * 0.5;
+  const centerY = lerp(GAME_HEIGHT * 0.38, GAME_HEIGHT * 0.66, theme.zoneWeights.core);
+
+  context.save();
+  context.strokeStyle = rgbToString(energyColor, 0.08 + theme.ringStrength * 0.2);
+  context.lineWidth = 2;
+
+  for (let index = 0; index < 5; index += 1) {
+    const radius = 54 + index * 44 + Math.sin(time * (0.75 + index * 0.05) + index) * (3 + theme.zoneWeights.core * 8);
+    context.save();
+    context.translate(centerX, centerY);
+    context.rotate(time * (0.08 + index * 0.015) * (index % 2 === 0 ? 1 : -1));
+    context.beginPath();
+    context.ellipse(0, 0, radius, radius * 0.28, 0, 0, Math.PI * 2);
+    context.stroke();
+    context.restore();
   }
 
   context.restore();
 
   context.save();
-  context.globalAlpha = 0.08;
+  context.strokeStyle = rgbToString(glyphColor, 0.08 + theme.alienStrength * 0.18);
+  context.lineWidth = 1.5;
+
+  [42, 70, GAME_WIDTH - 42, GAME_WIDTH - 70].forEach((x, columnIndex) => {
+    context.beginPath();
+    context.moveTo(x, -20);
+    for (let y = 28; y <= GAME_HEIGHT + 24; y += 56) {
+      const drift = Math.sin(time * 1.1 + y * 0.012 + columnIndex) * (8 + theme.zoneWeights.interface * 10);
+      context.lineTo(x + drift, y);
+    }
+    context.stroke();
+
+    for (let y = 44; y <= GAME_HEIGHT; y += 86) {
+      const pulse = 2 + Math.sin(time * 2.4 + y * 0.02 + columnIndex) * 1.4;
+      context.beginPath();
+      context.arc(x, y, pulse + theme.zoneWeights.core * 2.5, 0, Math.PI * 2);
+      context.stroke();
+    }
+  });
+
+  if (theme.zoneWeights.interface > 0.08 || theme.zoneWeights.alien > 0.08) {
+    for (let index = 0; index < 7; index += 1) {
+      const y = ((index * 86 + time * 22) % (GAME_HEIGHT + 80)) - 40;
+      const span = 26 + randomFromSeed(index + 0.4) * 26;
+      context.beginPath();
+      context.moveTo(centerX - span, y);
+      context.lineTo(centerX - span * 0.35, y);
+      context.lineTo(centerX - span * 0.1, y - 7);
+      context.moveTo(centerX + span, y);
+      context.lineTo(centerX + span * 0.35, y);
+      context.lineTo(centerX + span * 0.1, y - 7);
+      context.stroke();
+    }
+  }
+
+  context.restore();
+
+  if (theme.zoneWeights.core > 0.06) {
+    const coreGradient = context.createRadialGradient(centerX, GAME_HEIGHT - 64, 8, centerX, GAME_HEIGHT - 72, 180);
+    coreGradient.addColorStop(0, rgbToString([255, 255, 255], 0.5 + theme.zoneWeights.core * 0.3));
+    coreGradient.addColorStop(0.18, rgbToString(theme.alertColor, 0.28 + theme.zoneWeights.core * 0.22));
+    coreGradient.addColorStop(0.46, rgbToString(theme.accentColor, 0.16 + theme.zoneWeights.core * 0.18));
+    coreGradient.addColorStop(1, rgbToString(theme.accentColor, 0));
+    context.fillStyle = coreGradient;
+    context.fillRect(0, GAME_HEIGHT - 300, GAME_WIDTH, 320);
+
+    context.save();
+    context.strokeStyle = rgbToString(theme.glowColor, 0.14 + theme.zoneWeights.core * 0.24);
+    context.lineWidth = 2;
+    for (let index = 0; index < 5; index += 1) {
+      context.beginPath();
+      context.moveTo(centerX, GAME_HEIGHT - 90);
+      context.bezierCurveTo(
+        centerX - 140 + index * 36,
+        GAME_HEIGHT - 190 - index * 18,
+        centerX - 90 + index * 28,
+        GAME_HEIGHT - 300 - index * 12,
+        centerX + (index - 2) * 30,
+        GAME_HEIGHT - 420
+      );
+      context.stroke();
+    }
+    context.restore();
+  }
+}
+
+function drawAtmosphere(theme, time) {
+  const particleCount = Math.round(12 + theme.particleStrength * 34);
+  const emberColor = mixRgb(theme.alertColor, theme.glowColor, 0.24);
+  const energyColor = mixRgb(theme.glowColor, theme.accentColor, 0.45);
+  const dustColor = mixRgb(theme.dustColor, theme.bottomColor, 0.12);
+  const hotWeight = theme.zoneWeights.magma + theme.zoneWeights.core * 0.55;
+  const energyWeight = theme.zoneWeights.interface + theme.zoneWeights.alien + theme.zoneWeights.core;
+
+  for (let index = 0; index < particleCount; index += 1) {
+    const seed = index * 5.73 + 2.1;
+    const drift = randomFromSeed(seed);
+    const x = 16 + drift * (GAME_WIDTH - 32);
+    const y = GAME_HEIGHT - fract(time * (0.08 + randomFromSeed(seed + 1) * 0.16) + randomFromSeed(seed + 2)) * (GAME_HEIGHT + 40);
+    const size = 1 + randomFromSeed(seed + 3) * (1.4 + theme.zoneWeights.core * 2);
+    const alpha = 0.06 + randomFromSeed(seed + 4) * (0.1 + theme.particleStrength * 0.14);
+    const color = energyWeight > hotWeight
+      ? mixRgb(dustColor, energyColor, 0.65)
+      : mixRgb(dustColor, emberColor, 0.6);
+
+    context.fillStyle = rgbToString(color, alpha);
+    context.fillRect(x, y, size, size * (1.4 + energyWeight * 0.8));
+  }
+
+  if (theme.instability > 0.2) {
+    context.save();
+    context.strokeStyle = rgbToString(theme.glowColor, 0.03 + theme.instability * 0.06);
+    context.lineWidth = 1;
+    for (let index = 0; index < 4; index += 1) {
+      const y = ((index * 132 + time * 46) % (GAME_HEIGHT + 40)) - 20;
+      context.beginPath();
+      context.moveTo(0, y);
+      context.lineTo(GAME_WIDTH, y + Math.sin(time * 3 + index) * (2 + theme.instability * 5));
+      context.stroke();
+    }
+    context.restore();
+  }
+
+  context.save();
+  context.globalAlpha = 0.05 + theme.gridStrength * 0.04;
   context.fillStyle = '#ffffff';
   for (let y = 0; y <= GAME_HEIGHT; y += 4) {
     context.fillRect(0, y, GAME_WIDTH, 1);
   }
+  context.restore();
+}
+
+function drawBackground() {
+  const theme = getWorldTheme();
+  const time = game.elapsed + performance.now() * 0.0002;
+  const shakeAmount = theme.instability * (0.35 + smoothstep(0, 1, theme.zoneWeights.core) * 1.6);
+
+  context.save();
+  context.translate(
+    Math.sin(time * 11.5) * shakeAmount,
+    Math.cos(time * 9.8) * shakeAmount * 0.7
+  );
+
+  drawWorldGradient(theme, time);
+  drawFarShaft(theme, time);
+  drawRuinsAndTransit(theme, time);
+  drawMagmaLayer(theme, time);
+  drawAlienArchitecture(theme, time);
+  drawAtmosphere(theme, time);
+
   context.restore();
 }
 
