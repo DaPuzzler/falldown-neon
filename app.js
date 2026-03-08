@@ -2924,70 +2924,10 @@ function drawBall() {
   context.arc(game.ball.x, game.ball.y, BALL_RADIUS, 0, Math.PI * 2);
   context.fill();
 
-  context.save();
-  context.beginPath();
-  context.arc(game.ball.x, game.ball.y, BALL_RADIUS - 1, 0, Math.PI * 2);
-  context.clip();
-
-  const cockpit = context.createLinearGradient(
-    game.ball.x - BALL_RADIUS,
-    game.ball.y - BALL_RADIUS,
-    game.ball.x + BALL_RADIUS,
-    game.ball.y + BALL_RADIUS
-  );
-  cockpit.addColorStop(0, 'rgba(255, 255, 255, 0.34)');
-  cockpit.addColorStop(0.38, 'rgba(255, 239, 170, 0.18)');
-  cockpit.addColorStop(1, 'rgba(255, 160, 44, 0.04)');
-  context.fillStyle = cockpit;
-  context.fillRect(
-    game.ball.x - BALL_RADIUS,
-    game.ball.y - BALL_RADIUS,
-    BALL_RADIUS * 2,
-    BALL_RADIUS * 2
-  );
-
-  context.strokeStyle = 'rgba(255, 244, 210, 0.42)';
-  context.lineWidth = 1.4;
-  context.beginPath();
-  context.arc(game.ball.x - 1, game.ball.y, BALL_RADIUS * 0.66, -1.18, 1.05);
-  context.stroke();
-
-  context.fillStyle = 'rgba(255, 86, 214, 0.7)';
-  context.fillRect(game.ball.x - 1.6, game.ball.y - BALL_RADIUS + 2.4, 3.2, BALL_RADIUS * 1.12);
-
-  context.fillStyle = 'rgba(73, 26, 9, 0.72)';
-  context.beginPath();
-  context.arc(game.ball.x - 1.5, game.ball.y + 1, 2.1, 0, Math.PI * 2);
-  context.fill();
-
-  context.fillStyle = 'rgba(255, 246, 232, 0.86)';
-  context.beginPath();
-  context.arc(game.ball.x - 1.5, game.ball.y + 0.7, 1.2, 0, Math.PI * 2);
-  context.fill();
-
-  context.fillStyle = 'rgba(41, 46, 62, 0.95)';
-  context.beginPath();
-  context.arc(game.ball.x - 1.3, game.ball.y - 0.2, 1.35, 0, Math.PI * 2);
-  context.fill();
-
-  context.fillStyle = 'rgba(45, 52, 71, 0.95)';
-  context.beginPath();
-  context.moveTo(game.ball.x - 2.2, game.ball.y + 2.4);
-  context.lineTo(game.ball.x + 2.7, game.ball.y + 1.2);
-  context.lineTo(game.ball.x + 2, game.ball.y + 5.4);
-  context.lineTo(game.ball.x - 1.2, game.ball.y + 5.8);
-  context.closePath();
-  context.fill();
-
-  context.fillStyle = 'rgba(108, 241, 255, 0.95)';
-  context.fillRect(game.ball.x - 0.2, game.ball.y + 1.5, 2.4, 0.95);
-
   context.fillStyle = 'rgba(255, 255, 255, 0.55)';
   context.beginPath();
   context.ellipse(game.ball.x - 4.5, game.ball.y - 4.4, 2.6, 1.5, -0.8, 0, Math.PI * 2);
   context.fill();
-
-  context.restore();
 
   context.strokeStyle = 'rgba(255, 247, 210, 0.72)';
   context.lineWidth = 1;
