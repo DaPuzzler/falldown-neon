@@ -26,7 +26,7 @@ const MAX_HORIZONTAL_SPEED = 235;
 const GRAVITY = 1180;
 const MAX_PHYSICS_TRAVEL_PER_STEP = 12;
 const MAX_PHYSICS_SUBSTEPS = 6;
-const SCORE_PER_LEVEL = 1200;
+const SCORE_PER_LEVEL = 600;
 const NORMAL_DESCENT_LEVELS = 7;
 const ENDGAME_TRIGGER_LEVEL = NORMAL_DESCENT_LEVELS + 1;
 const CORE_BOSS_DURATION = 28;
@@ -2561,8 +2561,8 @@ function runVerticalPhysics(deltaTime, scoreRate) {
     game.ball.x = clamp(game.ball.x, BALL_RADIUS, GAME_WIDTH - BALL_RADIUS);
     resolveFloorCollisions(previousY, scrollStep);
 
-    const rescueLine = GAME_HEIGHT - FLOOR_SPACING * 0.72;
-    const visibleLine = GAME_HEIGHT - BALL_RADIUS - 3;
+    const rescueLine = GAME_HEIGHT - FLOOR_SPACING * 0.42;
+    const visibleLine = GAME_HEIGHT - BALL_RADIUS * 0.9;
     const rescueOverflow = Math.max(0, game.ball.y - rescueLine);
 
     if (rescueOverflow > 0) {
@@ -2582,6 +2582,7 @@ function runVerticalPhysics(deltaTime, scoreRate) {
       if (game.ball.y > visibleLine) {
         game.ball.y = visibleLine;
       }
+      resolveFloorCollisions(game.ball.y, catchUpShift);
       recycleFloors();
     } else if (game.catchUpSpeed > 0.1) {
       game.catchUpSpeed *= Math.exp(-10 * stepDelta);
