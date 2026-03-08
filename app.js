@@ -33,6 +33,7 @@ const CORE_ACTIVATION_DURATION = 4.8;
 const SPRINT_TRACK_Y = GAME_HEIGHT - 108;
 const SPRINT_NODE_X = GAME_WIDTH - 44;
 const SPRINT_HAZARD_INTERVAL = 0.88;
+const DEBUG_ENDGAME_SCORE = (ENDGAME_TRIGGER_LEVEL - 1) * 160;
 
 const canvas = document.getElementById('game-canvas');
 const context = canvas.getContext('2d');
@@ -64,6 +65,7 @@ const touchButtons = Array.from(document.querySelectorAll('.touch-button'));
 const gameFrame = document.querySelector('.game-frame');
 const screenPanel = document.querySelector('.screen-panel');
 const portraitContext = dialoguePortrait.getContext('2d');
+const pageParams = new URLSearchParams(window.location.search);
 
 const inputState = {
   left: false,
@@ -112,6 +114,15 @@ const endgame = {
   sprintHazards: [],
   activationTimer: 0,
   endingIndex: 0,
+};
+
+const runtimeState = {
+  fatalError: '',
+};
+
+const debugState = {
+  startMode: pageParams.get('debug') === 'endgame' ? 'endgame' : '',
+  autostartEndgame: pageParams.get('debug') === 'endgame' && pageParams.get('autostart') === '1',
 };
 
 const soundtrack = {
@@ -641,6 +652,42 @@ function mixRgb(start, end, amount) {
 function rgbToString(rgb, alpha = 1) {
   const rounded = rgb.map((value) => Math.round(clamp(value, 0, 255)));
   return `rgba(${rounded[0]}, ${rounded[1]}, ${rounded[2]}, ${alpha})`;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function reportRuntimeError(error) {
+  const rawMessage = typeof error === 'string'
+    ? error
+    : error && typeof error === 'object'
+      ? (error.stack || error.message || String(error))
+      : String(error);
+
+  if (runtimeState.fatalError === rawMessage) {
+    return;
+  }
+
+  runtimeState.fatalError = rawMessage;
+  game.running = false;
+  game.paused = false;
+  pauseButton.disabled = true;
+  pauseButton.textContent = 'Pause';
+  startButton.textContent = 'Reload Required';
+  setStatus('Runtime Error');
+  setSummary('The current build hit a browser-side exception. Reload after the bug is fixed.');
+  showOverlayHtml(
+    'Runtime Error',
+    'Debug Route Failed',
+    `<code class="runtime-error-copy">${escapeHtml(rawMessage)}</code>`,
+    'RELOAD TO RETRY'
+  );
 }
 
 function blendBandColor(weights, key) {
@@ -1334,6 +1381,10 @@ function setOverlayPrompt(text, visible = Boolean(text)) {
   overlayPrompt.hidden = !visible;
 }
 
+function isEndgameDebugStartEnabled() {
+  return debugState.startMode === 'endgame';
+}
+
 function setOverlayMode(mode) {
   overlay.dataset.mode = mode;
   overlayGeneric.hidden = mode === 'dialogue';
@@ -1462,10 +1513,12 @@ function showTitleScreen() {
   intro.launchProgress = 0;
 
   setOverlayMode('title');
-  overlayLabel.textContent = 'VX-99 / Drop Protocol';
+  overlayLabel.textContent = isEndgameDebugStartEnabled() ? 'VX-99 / Finale Test' : 'VX-99 / Drop Protocol';
   overlayTitle.textContent = 'CORE DROP';
-  overlayCopy.textContent = 'A one-way gravity dive from the neon undercity into the living core below.';
-  setOverlayPrompt('PRESS START');
+  overlayCopy.textContent = isEndgameDebugStartEnabled()
+    ? 'Debug route armed. Press Start to drop straight into the Living Core finale.'
+    : 'A one-way gravity dive from the neon undercity into the living core below.';
+  setOverlayPrompt(isEndgameDebugStartEnabled() ? 'PRESS START FOR FINALE' : 'PRESS START');
   setStatus('Title Screen');
   startButton.textContent = 'Start Mission';
   drawDialoguePortrait('jett');
@@ -1641,6 +1694,15 @@ function beginCoreBossPhase() {
   pauseButton.disabled = false;
   startButton.textContent = 'Pause / Resume';
   updateSoundtrackMix();
+}
+
+function startDebugEndgameRun() {
+  startGame(true);
+  game.score = DEBUG_ENDGAME_SCORE;
+  game.level = ENDGAME_TRIGGER_LEVEL;
+  game.elapsed = DEBUG_ENDGAME_SCORE / getDifficultyConfig().scoreRate;
+  updateHud();
+  beginCoreBossPhase();
 }
 
 function beginSprintPhase() {
@@ -2970,21 +3032,25 @@ function drawFrame() {
 }
 
 function frame(timestamp) {
-  updateIntroSequence(timestamp);
+  try {
+    updateIntroSequence(timestamp);
 
-  if (game.running) {
-    if (!game.lastTimestamp) {
+    if (game.running) {
+      if (!game.lastTimestamp) {
+        game.lastTimestamp = timestamp;
+      }
+
+      const deltaTime = clamp((timestamp - game.lastTimestamp) / 1000, 0, 0.032);
       game.lastTimestamp = timestamp;
+
+      updateGame(deltaTime);
+      updateHud();
     }
 
-    const deltaTime = clamp((timestamp - game.lastTimestamp) / 1000, 0, 0.032);
-    game.lastTimestamp = timestamp;
-
-    updateGame(deltaTime);
-    updateHud();
+    drawFrame();
+  } catch (error) {
+    reportRuntimeError(error);
   }
-
-  drawFrame();
   requestAnimationFrame(frame);
 }
 
@@ -2999,6 +3065,11 @@ function updateDirectionalInput(direction, isActive) {
 function handlePrimaryAction() {
   if (endgame.phase === 'ending') {
     advanceEndingSequence();
+    return;
+  }
+
+  if (intro.mode === 'title' && isEndgameDebugStartEnabled()) {
+    startDebugEndgameRun();
     return;
   }
 
@@ -3055,7 +3126,15 @@ function handleKeyState(event, isActive) {
   }
 
   if (isActive && key === 'enter' && (intro.mode === 'title' || intro.mode === 'dialogue')) {
-    advanceIntroSequence();
+    handlePrimaryAction();
+    event.preventDefault();
+  }
+
+  if (isActive && event.shiftKey && key === 'e' && intro.mode === 'title' && !game.started) {
+    debugState.startMode = 'endgame';
+    showTitleScreen();
+    playUiConfirmSound();
+    startDebugEndgameRun();
     event.preventDefault();
   }
 
@@ -3091,6 +3170,12 @@ function applyDifficultyChange(nextDifficulty) {
 
 window.addEventListener('keydown', (event) => handleKeyState(event, true));
 window.addEventListener('keyup', (event) => handleKeyState(event, false));
+window.addEventListener('error', (event) => {
+  reportRuntimeError(event.error || `${event.message} @ ${event.filename || 'unknown'}:${event.lineno || 0}`);
+});
+window.addEventListener('unhandledrejection', (event) => {
+  reportRuntimeError(event.reason || 'Unhandled promise rejection');
+});
 window.addEventListener('blur', () => {
   updateDirectionalInput('left', false);
   updateDirectionalInput('right', false);
@@ -3162,6 +3247,9 @@ setImmersiveButtonState();
 setDifficultyControlState();
 setVolumeControlState();
 resetGame();
+if (debugState.autostartEndgame) {
+  startDebugEndgameRun();
+}
 requestAnimationFrame(frame);
 
 activateSoundtrack().catch(() => {
