@@ -289,7 +289,7 @@ function createBall() {
 
 function loadBestScore() {
   const value = Number(localStorage.getItem(STORAGE_KEY) || '0');
-  return Number.isFinite(value) && value > 0 ? Math.round(value) : 0;
+  return Number.isFinite(value) && value > 0 ? Math.ceil(value) : 0;
 }
 
 function loadMusicEnabled() {
@@ -388,10 +388,19 @@ function setMusicButtonState() {
   musicButton.setAttribute('aria-pressed', String(soundtrack.enabled));
 }
 
+function isImmersiveModeActive() {
+  return document.body.classList.contains('immersive-mode');
+}
+
+function setImmersiveMode(isActive) {
+  document.body.classList.toggle('immersive-mode', isActive);
+}
+
 function setImmersiveButtonState() {
   const isFullscreen = document.fullscreenElement === screenPanel;
-  immersiveButton.textContent = isFullscreen ? 'Minimize' : 'Maximize';
-  immersiveButton.setAttribute('aria-pressed', String(isFullscreen));
+  const isImmersive = isImmersiveModeActive() || isFullscreen;
+  immersiveButton.textContent = isImmersive ? 'Minimize' : 'Maximize';
+  immersiveButton.setAttribute('aria-pressed', String(isImmersive));
 }
 
 function setDifficultyControlState() {
@@ -811,18 +820,25 @@ async function activateSoundtrack() {
 }
 
 async function toggleImmersiveMode() {
-  if (!document.fullscreenEnabled) {
-    return;
-  }
+  const shouldEnable = !(isImmersiveModeActive() || document.fullscreenElement === screenPanel);
 
   try {
-    if (document.fullscreenElement === screenPanel) {
-      await document.exitFullscreen();
+    if (shouldEnable) {
+      setImmersiveMode(true);
+      if (document.fullscreenEnabled) {
+        await screenPanel.requestFullscreen();
+      }
     } else {
-      await screenPanel.requestFullscreen();
+      setImmersiveMode(false);
+      if (document.fullscreenElement === screenPanel) {
+        await document.exitFullscreen();
+      }
     }
   } catch (error) {
+    setImmersiveMode(shouldEnable);
     console.error('Fullscreen toggle failed', error);
+  } finally {
+    setImmersiveButtonState();
   }
 }
 
@@ -1461,6 +1477,7 @@ document.addEventListener('pointerdown', () => {
 window.addEventListener('resize', setCanvasResolution);
 
 setCanvasResolution();
+setImmersiveMode(true);
 setMusicButtonState();
 setImmersiveButtonState();
 setDifficultyControlState();
