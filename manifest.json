@@ -1,7 +1,7 @@
 {
-  "name": "Falldown Neon",
-  "short_name": "Falldown",
-  "description": "A Tron-inspired remake of the classic calculator Falldown game.",
+  "name": "Core Drop",
+  "short_name": "Core Drop",
+  "description": "A neon descent through VX-99, from industrial undercity shafts into a living planetary core.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

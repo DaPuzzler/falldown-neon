@@ -232,11 +232,12 @@ body.immersive-mode .game-frame {
   position: absolute;
   inset: 0;
   display: grid;
-  place-content: center;
-  gap: 0.4rem;
+  align-content: center;
+  justify-items: center;
+  gap: 0.85rem;
   padding: 1.5rem;
   text-align: center;
-  background: linear-gradient(180deg, rgba(1, 3, 10, 0.2), rgba(1, 3, 10, 0.7));
+  background: linear-gradient(180deg, rgba(1, 3, 10, 0.18), rgba(1, 3, 10, 0.74));
   transition: opacity 160ms ease;
   cursor: pointer;
 }
@@ -244,6 +245,52 @@ body.immersive-mode .game-frame {
 .overlay[hidden] {
   opacity: 0;
   pointer-events: none;
+}
+
+.overlay-generic,
+.overlay-dialogue {
+  width: min(100%, 30rem);
+}
+
+.overlay-generic[hidden],
+.overlay-dialogue[hidden],
+.overlay-prompt[hidden] {
+  display: none;
+}
+
+.overlay[data-mode="title"] {
+  background:
+    linear-gradient(180deg, rgba(1, 3, 10, 0.1), rgba(1, 3, 10, 0.66)),
+    radial-gradient(circle at 50% 18%, rgba(89, 243, 255, 0.12), transparent 40%);
+}
+
+.overlay[data-mode="title"] .overlay-generic {
+  max-width: 32rem;
+}
+
+.overlay[data-mode="title"] .overlay-title {
+  font-size: clamp(2.7rem, 9vw, 4.6rem);
+  letter-spacing: 0.16em;
+  text-indent: 0.16em;
+  text-shadow: 0 0 22px rgba(89, 243, 255, 0.4), 0 0 34px rgba(255, 78, 221, 0.18);
+}
+
+.overlay[data-mode="dialogue"] {
+  align-content: end;
+  justify-items: stretch;
+  padding-bottom: 1.15rem;
+  background:
+    linear-gradient(180deg, rgba(1, 3, 10, 0.16), rgba(1, 3, 10, 0.84)),
+    repeating-linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.02) 0 2px,
+      transparent 2px 6px
+    );
+}
+
+.overlay[data-mode="launch"] .overlay-title {
+  letter-spacing: 0.2em;
+  text-indent: 0.2em;
 }
 
 .overlay-label {
@@ -262,6 +309,122 @@ body.immersive-mode .game-frame {
   max-width: 24rem;
   color: var(--muted);
   line-height: 1.6;
+}
+
+.overlay-prompt {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 0.76rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--amber);
+  text-shadow: 0 0 16px rgba(255, 204, 92, 0.24);
+  animation: overlayPulse 1.15s ease-in-out infinite;
+}
+
+.dialogue-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.55rem;
+  color: var(--cyan);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.dialogue-badge {
+  padding: 0.32rem 0.55rem;
+  border: 1px solid rgba(255, 204, 92, 0.28);
+  border-radius: 999px;
+  color: #ffe9ab;
+  background: rgba(255, 204, 92, 0.08);
+}
+
+.dialogue-panel {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.9rem;
+  align-items: start;
+  padding: 0.9rem;
+  border: 1px solid rgba(89, 243, 255, 0.24);
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(4, 9, 20, 0.94), rgba(3, 6, 14, 0.9)),
+    rgba(255, 255, 255, 0.02);
+  box-shadow: 0 0 24px rgba(89, 243, 255, 0.1);
+}
+
+.dialogue-portrait-frame {
+  display: grid;
+  place-items: center;
+  width: 5.7rem;
+  aspect-ratio: 1;
+  border-radius: 18px;
+  border: 1px solid rgba(89, 243, 255, 0.18);
+  background:
+    linear-gradient(180deg, rgba(10, 16, 31, 0.94), rgba(4, 7, 16, 0.92)),
+    rgba(255, 255, 255, 0.02);
+  box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.03);
+}
+
+#dialogue-portrait {
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+.dialogue-copyblock {
+  text-align: left;
+}
+
+.dialogue-speaker {
+  margin: 0 0 0.45rem;
+  font-family: var(--font-display);
+  font-size: 0.88rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cyan-hot);
+}
+
+.dialogue-lines {
+  display: grid;
+  gap: 0.48rem;
+}
+
+.dialogue-line {
+  margin: 0;
+  color: #eaf8ff;
+  line-height: 1.55;
+  min-height: 1.55em;
+}
+
+.dialogue-line-speaker {
+  margin-right: 0.35rem;
+  font-family: var(--font-display);
+  letter-spacing: 0.12em;
+}
+
+.dialogue-line-speaker.command {
+  color: #8effc2;
+}
+
+.dialogue-line-speaker.jett {
+  color: #ff88e8;
+}
+
+@keyframes overlayPulse {
+  0%,
+  100% {
+    opacity: 0.38;
+    transform: translateY(0);
+  }
+
+  50% {
+    opacity: 1;
+    transform: translateY(-1px);
+  }
 }
 
 .hud {
@@ -527,6 +690,20 @@ kbd {
 
   .touch-button {
     min-height: 4.9rem;
+  }
+
+  .dialogue-panel {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .dialogue-copyblock {
+    text-align: center;
+  }
+
+  .dialogue-header {
+    flex-direction: column;
   }
 }
 

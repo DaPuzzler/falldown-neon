@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#02030a">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Falldown Neon">
-  <title>Falldown Neon</title>
+  <meta name="apple-mobile-web-app-title" content="Core Drop">
+  <title>Core Drop</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <link rel="apple-touch-icon" href="icon-192.png">
@@ -16,24 +16,46 @@
 <body>
   <main class="cabinet">
     <section class="marquee">
-      <p class="kicker">Arcade Calculator Remix</p>
-      <h1>Falldown Neon</h1>
-      <p class="tagline">The graphing-calculator classic rebuilt as a glowing Tron run through a collapsing digital grid.</p>
+      <p class="kicker">Arcade Descent Protocol</p>
+      <h1>Core Drop</h1>
+      <p class="tagline">A neon fall through VX-99, from the undercity grid into the living machine buried at the planet’s core.</p>
     </section>
 
-    <section class="console" aria-label="Falldown game console">
+    <section class="console" aria-label="Core Drop game console">
       <div class="screen-panel">
         <div class="screen-topline">
-          <span>Sector 84</span>
+          <span>VX-99 / Shaft 03</span>
           <span id="status-text">Standby</span>
         </div>
 
         <div class="game-frame">
-          <canvas id="game-canvas" width="360" height="640" aria-label="Falldown Neon game"></canvas>
-          <div class="overlay" id="overlay">
-            <p class="overlay-label" id="overlay-label">Press Start</p>
-            <h2 class="overlay-title" id="overlay-title">Drop Through The Grid</h2>
-            <p class="overlay-copy" id="overlay-copy">Thread the glowing gaps. Miss the lane and the ceiling closes in.</p>
+          <canvas id="game-canvas" width="360" height="640" aria-label="Core Drop game"></canvas>
+          <div class="overlay" id="overlay" data-mode="title">
+            <div class="overlay-generic" id="overlay-generic">
+              <p class="overlay-label" id="overlay-label">VX-99 / Drop Protocol</p>
+              <h2 class="overlay-title" id="overlay-title">CORE DROP</h2>
+              <p class="overlay-copy" id="overlay-copy">Neon skyline above. Living core below. Press Start to open the hatch.</p>
+            </div>
+
+            <div class="overlay-dialogue" id="overlay-dialogue" hidden>
+              <div class="dialogue-header">
+                <span class="dialogue-channel">Transmission // Launch Bay 03</span>
+                <span class="dialogue-badge" id="dialogue-badge">Live</span>
+              </div>
+
+              <div class="dialogue-panel">
+                <div class="dialogue-portrait-frame">
+                  <canvas id="dialogue-portrait" width="64" height="64" aria-hidden="true"></canvas>
+                </div>
+
+                <div class="dialogue-copyblock">
+                  <p class="dialogue-speaker" id="dialogue-speaker">COMMAND</p>
+                  <div class="dialogue-lines" id="dialogue-lines"></div>
+                </div>
+              </div>
+            </div>
+
+            <p class="overlay-prompt" id="overlay-prompt">PRESS START</p>
           </div>
         </div>
 
@@ -62,7 +84,7 @@
         </div>
 
         <div class="actions">
-          <button id="start-button" class="action action-primary" type="button">Start Run</button>
+          <button id="start-button" class="action action-primary" type="button">Start Mission</button>
           <button id="pause-button" class="action" type="button" disabled>Pause</button>
           <button id="music-button" class="action action-secondary" type="button" aria-pressed="true">Music On</button>
           <button id="immersive-button" class="action" type="button" aria-pressed="false">Maximize</button>
@@ -72,7 +94,7 @@
       <aside class="telemetry">
         <section class="panel">
           <h2>Mission</h2>
-          <p>Stay between the ceiling and the abyss while the grid accelerates. Shift left or right and keep finding the next opening.</p>
+          <p>Thread the shaft, stay ahead of the closing ceiling, and descend from VX-99’s machine guts into the awakened core below.</p>
         </section>
 
         <section class="panel">

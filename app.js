@@ -30,9 +30,16 @@ const MAX_PHYSICS_SUBSTEPS = 6;
 const canvas = document.getElementById('game-canvas');
 const context = canvas.getContext('2d');
 const overlay = document.getElementById('overlay');
+const overlayGeneric = document.getElementById('overlay-generic');
 const overlayLabel = document.getElementById('overlay-label');
 const overlayTitle = document.getElementById('overlay-title');
 const overlayCopy = document.getElementById('overlay-copy');
+const overlayPrompt = document.getElementById('overlay-prompt');
+const overlayDialogue = document.getElementById('overlay-dialogue');
+const dialogueBadge = document.getElementById('dialogue-badge');
+const dialogueSpeaker = document.getElementById('dialogue-speaker');
+const dialogueLines = document.getElementById('dialogue-lines');
+const dialoguePortrait = document.getElementById('dialogue-portrait');
 const statusText = document.getElementById('status-text');
 const scoreValue = document.getElementById('score-value');
 const bestValue = document.getElementById('best-value');
@@ -49,6 +56,7 @@ const volumeValue = document.getElementById('volume-value');
 const touchButtons = Array.from(document.querySelectorAll('.touch-button'));
 const gameFrame = document.querySelector('.game-frame');
 const screenPanel = document.querySelector('.screen-panel');
+const portraitContext = dialoguePortrait.getContext('2d');
 
 const inputState = {
   left: false,
@@ -71,6 +79,21 @@ const game = {
   ball: createBall(),
   floors: [],
   trail: [],
+};
+
+const intro = {
+  mode: 'title',
+  screenIndex: 0,
+  lineIndex: 0,
+  charIndex: 0,
+  visibleLines: [],
+  typing: false,
+  ready: false,
+  activeSpeaker: 'command',
+  nextCharTime: 0,
+  pauseUntil: 0,
+  launchStartTime: 0,
+  launchProgress: 0,
 };
 
 const soundtrack = {
@@ -282,6 +305,41 @@ const WORLD_BANDS = [
     cityGlowStrength: 0,
   },
 ];
+
+const INTRO_SCREENS = [
+  [
+    { speaker: 'command', text: 'VX-99 core is going critical.' },
+    { speaker: 'command', text: 'No one can get that deep.' },
+    { speaker: 'jett', text: 'Then send me.' },
+  ],
+  [
+    { speaker: 'command', text: 'Jett... this is a one-way drop.' },
+    { speaker: 'jett', text: 'Then I better make it count.' },
+  ],
+];
+
+const SPEAKERS = {
+  command: {
+    label: 'COMMAND',
+    color: '#8effc2',
+    accent: [120, 255, 194],
+    shadow: [38, 78, 62],
+    suit: [86, 108, 130],
+    visor: [163, 255, 206],
+  },
+  jett: {
+    label: 'JETT',
+    color: '#ff88e8',
+    accent: [255, 132, 232],
+    shadow: [94, 26, 76],
+    suit: [72, 90, 122],
+    visor: [106, 232, 255],
+  },
+};
+
+const DIALOGUE_CHAR_MS = 24;
+const DIALOGUE_LINE_PAUSE_MS = 260;
+const LAUNCH_DURATION_MS = 1650;
 
 const LOOP_CHORDS = [
   { root: 45, tones: [57, 60, 64] },
@@ -520,8 +578,8 @@ function blendBandValue(weights, key) {
   return weights.reduce((total, weight, index) => total + WORLD_BANDS[index][key] * weight, 0);
 }
 
-function getWorldTheme() {
-  const depth = clamp((game.level - 1) / 12, 0, WORLD_BANDS.length - 1);
+function getWorldThemeForDepth(rawDepth) {
+  const depth = clamp(rawDepth, 0, WORLD_BANDS.length - 1);
   const weights = WORLD_BANDS.map((_, index) => {
     const proximity = clamp(1 - Math.abs(depth - index), 0, 1);
     return proximity * proximity * (3 - 2 * proximity);
@@ -559,6 +617,10 @@ function getWorldTheme() {
       core: normalizedWeights[6],
     },
   };
+}
+
+function getWorldTheme() {
+  return getWorldThemeForDepth((game.level - 1) / 12);
 }
 
 function midiToFrequency(note) {
@@ -1154,6 +1216,258 @@ function resetFloors() {
   }
 }
 
+function setOverlayPrompt(text, visible = Boolean(text)) {
+  overlayPrompt.textContent = text;
+  overlayPrompt.hidden = !visible;
+}
+
+function setOverlayMode(mode) {
+  overlay.dataset.mode = mode;
+  overlayGeneric.hidden = mode === 'dialogue';
+  overlayDialogue.hidden = mode !== 'dialogue';
+  overlay.hidden = false;
+}
+
+function drawDialoguePortrait(speakerKey) {
+  const speaker = SPEAKERS[speakerKey] || SPEAKERS.command;
+  const scale = 4;
+  portraitContext.clearRect(0, 0, dialoguePortrait.width, dialoguePortrait.height);
+  portraitContext.imageSmoothingEnabled = false;
+
+  portraitContext.fillStyle = 'rgba(4, 10, 18, 0.96)';
+  portraitContext.fillRect(0, 0, 64, 64);
+
+  portraitContext.fillStyle = rgbToString(speaker.shadow, 0.25);
+  portraitContext.fillRect(6, 8, 52, 48);
+
+  const fillPixels = (pixels, color) => {
+    portraitContext.fillStyle = color;
+    pixels.forEach(([x, y, w = 1, h = 1]) => {
+      portraitContext.fillRect(x * scale, y * scale, w * scale, h * scale);
+    });
+  };
+
+  const skin = speakerKey === 'jett' ? '#ffcfaa' : '#d9c1a6';
+  const hair = speakerKey === 'jett' ? '#f8f4ff' : '#bcc7d8';
+  const suitGlow = rgbToString(speaker.accent, 0.9);
+  const visorGlow = rgbToString(speaker.visor, 0.85);
+
+  fillPixels([[2, 11, 12, 3], [2, 14, 5, 2], [9, 14, 5, 2], [1, 16, 14, 1]], rgbToString(speaker.suit, 0.95));
+  fillPixels([[4, 4, 8, 2], [3, 6, 10, 1], [4, 7, 8, 1]], hair);
+  fillPixels([[4, 8, 8, 5], [5, 13, 6, 1], [6, 14, 4, 1]], skin);
+  fillPixels([[5, 9, 2, 1], [9, 9, 2, 1]], visorGlow);
+  fillPixels([[5, 15, 2, 1], [9, 15, 2, 1], [3, 12, 1, 2], [12, 12, 1, 2]], suitGlow);
+  fillPixels([[6, 11, 1, 1], [10, 11, 1, 1], [7, 13, 3, 1]], '#12141c');
+
+  if (speakerKey === 'jett') {
+    fillPixels([[2, 6, 2, 6], [12, 7, 2, 5], [3, 5, 1, 1], [11, 6, 1, 1]], rgbToString(speaker.accent, 0.95));
+    fillPixels([[8, 7, 2, 1], [9, 8, 2, 1]], '#ffffff');
+  } else {
+    fillPixels([[1, 7, 2, 6], [13, 8, 1, 5], [4, 7, 1, 1], [10, 7, 1, 1]], '#9fd5b7');
+    fillPixels([[7, 7, 2, 1], [6, 8, 4, 1]], rgbToString(speaker.visor, 0.7));
+  }
+
+  portraitContext.strokeStyle = rgbToString(speaker.accent, 0.38);
+  portraitContext.lineWidth = 1;
+  portraitContext.strokeRect(2.5, 2.5, 59, 59);
+}
+
+function renderDialogueOverlay() {
+  const speaker = SPEAKERS[intro.activeSpeaker] || SPEAKERS.command;
+  setOverlayMode('dialogue');
+  dialogueBadge.textContent = intro.mode === 'launch' ? 'Drop' : 'Live';
+  dialogueSpeaker.textContent = speaker.label;
+  dialogueSpeaker.style.color = speaker.color;
+  dialogueLines.innerHTML = intro.visibleLines
+    .map((line) => `<p class="dialogue-line"><span class="dialogue-line-speaker ${line.speaker}">${SPEAKERS[line.speaker].label}:</span>${line.text}</p>`)
+    .join('');
+  drawDialoguePortrait(intro.activeSpeaker);
+}
+
+function playUiConfirmSound() {
+  activateSoundtrack().catch(() => {});
+
+  if (!soundtrack.context || !soundtrack.sfxGain) {
+    return;
+  }
+
+  const when = soundtrack.context.currentTime + 0.01;
+  createSfxVoice('square', midiToFrequency(88), when, 0.05, 0.08, midiToFrequency(95));
+  createSfxVoice('triangle', midiToFrequency(76), when, 0.08, 0.05, midiToFrequency(83));
+}
+
+function playTransmissionBleep(speakerKey) {
+  if (!soundtrack.context || !soundtrack.sfxGain) {
+    return;
+  }
+
+  const start = soundtrack.context.currentTime + 0.003;
+  const baseNote = speakerKey === 'jett' ? 86 : 79;
+  createSfxVoice('square', midiToFrequency(baseNote), start, 0.025, 0.018, midiToFrequency(baseNote + 2));
+}
+
+function playLaunchSound() {
+  activateSoundtrack().catch(() => {});
+
+  if (!soundtrack.context || !soundtrack.sfxGain) {
+    return;
+  }
+
+  const start = soundtrack.context.currentTime + 0.03;
+  createSfxVoice('triangle', midiToFrequency(40), start, 0.42, 0.12, midiToFrequency(52));
+  createSfxVoice('square', midiToFrequency(57), start + 0.16, 0.22, 0.08, midiToFrequency(69));
+}
+
+function showTitleScreen() {
+  intro.mode = 'title';
+  intro.screenIndex = 0;
+  intro.lineIndex = 0;
+  intro.charIndex = 0;
+  intro.visibleLines = [];
+  intro.typing = false;
+  intro.ready = true;
+  intro.activeSpeaker = 'command';
+  intro.launchProgress = 0;
+
+  setOverlayMode('title');
+  overlayLabel.textContent = 'VX-99 / Drop Protocol';
+  overlayTitle.textContent = 'CORE DROP';
+  overlayCopy.textContent = 'A one-way gravity dive from the neon undercity into the living core below.';
+  setOverlayPrompt('PRESS START');
+  setStatus('Title Screen');
+  startButton.textContent = 'Start Mission';
+  drawDialoguePortrait('jett');
+}
+
+function startIntroScreen(screenIndex) {
+  intro.mode = 'dialogue';
+  intro.screenIndex = screenIndex;
+  intro.lineIndex = 0;
+  intro.charIndex = 0;
+  intro.visibleLines = [];
+  intro.typing = true;
+  intro.ready = false;
+  intro.activeSpeaker = INTRO_SCREENS[screenIndex][0].speaker;
+  intro.pauseUntil = performance.now() + 90;
+  intro.nextCharTime = intro.pauseUntil + DIALOGUE_CHAR_MS;
+  setStatus(`Transmission ${screenIndex + 1}/2`);
+  startButton.textContent = 'Advance';
+  setOverlayPrompt('');
+  renderDialogueOverlay();
+}
+
+function beginIntroSequence() {
+  playUiConfirmSound();
+  startIntroScreen(0);
+  setSummary('Launch command channel open. Jett is receiving the drop brief.');
+}
+
+function completeCurrentIntroScreen() {
+  const screen = INTRO_SCREENS[intro.screenIndex];
+  intro.visibleLines = screen.map((line) => ({ speaker: line.speaker, text: line.text }));
+  intro.lineIndex = screen.length;
+  intro.charIndex = 0;
+  intro.typing = false;
+  intro.ready = true;
+  intro.activeSpeaker = screen[screen.length - 1].speaker;
+  setOverlayPrompt(intro.screenIndex === INTRO_SCREENS.length - 1 ? 'PRESS START TO LAUNCH' : 'PRESS START');
+  renderDialogueOverlay();
+}
+
+function beginLaunchTransition() {
+  playLaunchSound();
+  intro.mode = 'launch';
+  intro.typing = false;
+  intro.ready = false;
+  intro.launchStartTime = performance.now();
+  intro.launchProgress = 0;
+
+  setOverlayMode('launch');
+  overlayLabel.textContent = 'Launch Bay 03';
+  overlayTitle.textContent = 'DROP COMMITTED';
+  overlayCopy.textContent = 'Hatch open. Gravity sled hot. Descend.';
+  setOverlayPrompt('', false);
+  setStatus('Launch');
+  setSummary('Jett is in the chute. Control transfers the moment the drop begins.');
+  startButton.textContent = 'Launching...';
+}
+
+function advanceIntroSequence() {
+  if (intro.mode === 'title') {
+    beginIntroSequence();
+    return;
+  }
+
+  if (intro.mode === 'dialogue') {
+    if (intro.typing) {
+      completeCurrentIntroScreen();
+      return;
+    }
+
+    if (intro.ready) {
+      playUiConfirmSound();
+      if (intro.screenIndex < INTRO_SCREENS.length - 1) {
+        startIntroScreen(intro.screenIndex + 1);
+      } else {
+        beginLaunchTransition();
+      }
+    }
+  }
+}
+
+function updateIntroSequence(timestamp) {
+  if (intro.mode === 'dialogue' && intro.typing) {
+    const screen = INTRO_SCREENS[intro.screenIndex];
+
+    while (intro.typing && timestamp >= intro.nextCharTime) {
+      if (intro.lineIndex >= screen.length) {
+        completeCurrentIntroScreen();
+        break;
+      }
+
+      const activeLine = screen[intro.lineIndex];
+      intro.activeSpeaker = activeLine.speaker;
+
+      if (!intro.visibleLines[intro.lineIndex]) {
+        intro.visibleLines[intro.lineIndex] = { speaker: activeLine.speaker, text: '' };
+      }
+
+      if (intro.charIndex < activeLine.text.length) {
+        const nextCharacter = activeLine.text[intro.charIndex];
+        intro.visibleLines[intro.lineIndex].text += nextCharacter;
+        intro.charIndex += 1;
+
+        if (nextCharacter.trim()) {
+          playTransmissionBleep(activeLine.speaker);
+        }
+
+        const extraDelay = nextCharacter === '.' || nextCharacter === '!' || nextCharacter === '?' ? 74 : nextCharacter === ',' ? 42 : 0;
+        intro.nextCharTime += DIALOGUE_CHAR_MS + extraDelay;
+      } else {
+        intro.lineIndex += 1;
+        intro.charIndex = 0;
+
+        if (intro.lineIndex >= screen.length) {
+          completeCurrentIntroScreen();
+        } else {
+          intro.activeSpeaker = screen[intro.lineIndex].speaker;
+          intro.pauseUntil = timestamp + DIALOGUE_LINE_PAUSE_MS;
+          intro.nextCharTime = intro.pauseUntil + DIALOGUE_CHAR_MS;
+        }
+      }
+    }
+
+    renderDialogueOverlay();
+  } else if (intro.mode === 'launch') {
+    intro.launchProgress = clamp((timestamp - intro.launchStartTime) / LAUNCH_DURATION_MS, 0, 1);
+
+    if (intro.launchProgress >= 1) {
+      intro.mode = 'none';
+      startGame(true);
+    }
+  }
+}
+
 function resetGame() {
   const config = getDifficultyConfig();
   game.started = false;
@@ -1171,9 +1485,8 @@ function resetGame() {
   resetFloors();
   updateHud();
   setStatus('Standby');
-  setSummary(`The grid is idle. ${config.label} mode is armed. Start a run to initialize the lane generator.`);
-  showOverlay('Tap Screen To Start', 'Drop Through The Grid', 'Thread the glowing gaps. Tap the playfield to start, pause, or resume the run.');
-  startButton.textContent = 'Start Run';
+  setSummary(`Drop corridor is idle. ${config.label} mode is armed. Start the mission to enter VX-99.`);
+  showTitleScreen();
   pauseButton.textContent = 'Pause';
   pauseButton.disabled = true;
   resetSoundtrackSequence();
@@ -1198,6 +1511,7 @@ function startGame(forceReset = false) {
   }
 
   game.started = true;
+  intro.mode = 'none';
   game.running = true;
   game.paused = false;
   game.gameOver = false;
@@ -1227,7 +1541,7 @@ function pauseGame() {
   if (game.paused) {
     setStatus('Paused');
     setSummary('Run paused. Resume when you are ready to drop back into the grid.');
-    showOverlay('Signal Hold', 'Run Paused', 'Tap the playfield again to resume and keep descending through the openings.');
+    showOverlay('Signal Hold', 'Run Paused', 'Tap the playfield again to resume and keep descending through the openings.', 'PRESS START TO RESUME');
     pauseButton.textContent = 'Resume';
   } else {
     setStatus('Live');
@@ -1254,7 +1568,8 @@ function endGame(reason) {
   updateHud();
   setStatus('Terminated');
   setSummary(`Run ended at ${finalScore} points. ${reason}`);
-  showOverlay('Run Lost', `Score ${finalScore}`, reason);
+  showOverlay('Run Lost', `Score ${finalScore}`, reason, 'PRESS START TO RESTART');
+  startButton.textContent = 'Restart Run';
   pauseButton.disabled = true;
   pauseButton.textContent = 'Pause';
   playGameOverSound();
@@ -1269,14 +1584,17 @@ function setSummary(text) {
   runSummary.textContent = text;
 }
 
-function showOverlay(label, title, copy) {
+function showOverlay(label, title, copy, prompt = '') {
+  setOverlayMode('generic');
   overlayLabel.textContent = label;
   overlayTitle.textContent = title;
   overlayCopy.textContent = copy;
+  setOverlayPrompt(prompt, Boolean(prompt));
   overlay.hidden = false;
 }
 
 function hideOverlay() {
+  setOverlayPrompt('', false);
   overlay.hidden = true;
 }
 
@@ -1854,6 +2172,140 @@ function drawBackground() {
   context.restore();
 }
 
+function drawTitleScene() {
+  const time = performance.now() * 0.00018;
+  const theme = getWorldThemeForDepth(0.18);
+
+  drawWorldGradient(theme, time);
+  drawFarShaft(theme, time * 0.72);
+
+  context.fillStyle = rgbToString(theme.bottomColor, 0.7);
+  context.beginPath();
+  context.moveTo(32, 0);
+  context.lineTo(132, 0);
+  context.lineTo(214, GAME_HEIGHT);
+  context.lineTo(146, GAME_HEIGHT);
+  context.closePath();
+  context.fill();
+
+  context.beginPath();
+  context.moveTo(GAME_WIDTH - 32, 0);
+  context.lineTo(GAME_WIDTH - 132, 0);
+  context.lineTo(GAME_WIDTH - 214, GAME_HEIGHT);
+  context.lineTo(GAME_WIDTH - 146, GAME_HEIGHT);
+  context.closePath();
+  context.fill();
+
+  context.fillStyle = rgbToString(theme.glowColor, 0.08);
+  context.fillRect(0, 0, GAME_WIDTH, 120);
+
+  for (let index = 0; index < 14; index += 1) {
+    const x = 12 + index * 26;
+    const height = 20 + randomFromSeed(index + 1.3) * 42;
+    context.fillStyle = rgbToString(mixRgb(theme.midColor, theme.glowColor, 0.2), 0.22);
+    context.fillRect(x, 40 - height, 18, height);
+    context.fillStyle = rgbToString(theme.accentColor, 0.35);
+    context.fillRect(x + 6, 38 - height, 4, 4);
+  }
+
+  context.strokeStyle = rgbToString(theme.alertColor, 0.36);
+  context.lineWidth = 2;
+  context.strokeRect(116, 98, 128, 34);
+  drawChevronStrip(116, 100, 128, 30, theme.alertColor, 0.14);
+
+  context.fillStyle = rgbToString(theme.glowColor, 0.16);
+  context.beginPath();
+  context.moveTo(GAME_WIDTH * 0.5, 148);
+  context.lineTo(202, 206);
+  context.lineTo(158, 206);
+  context.closePath();
+  context.fill();
+
+  context.fillStyle = rgbToString([255, 255, 255], 0.88);
+  context.beginPath();
+  context.arc(GAME_WIDTH * 0.5, 186, 5, 0, Math.PI * 2);
+  context.fill();
+}
+
+function drawDialogueScene() {
+  const time = performance.now() * 0.00018;
+  const theme = getWorldThemeForDepth(0.95);
+
+  drawWorldGradient(theme, time * 0.4);
+
+  context.fillStyle = rgbToString([8, 10, 18], 0.82);
+  context.fillRect(0, 0, 48, GAME_HEIGHT);
+  context.fillRect(GAME_WIDTH - 48, 0, 48, GAME_HEIGHT);
+
+  context.strokeStyle = rgbToString(theme.glowColor, 0.12);
+  context.lineWidth = 2;
+  [28, 44, GAME_WIDTH - 28, GAME_WIDTH - 44].forEach((x) => {
+    context.beginPath();
+    context.moveTo(x, 0);
+    context.lineTo(x, GAME_HEIGHT);
+    context.stroke();
+  });
+
+  for (let index = 0; index < 4; index += 1) {
+    const light = 0.32 + Math.sin(time * 5 + index * 1.3) * 0.18;
+    context.fillStyle = rgbToString([255, 98, 98], 0.2 + light * 0.18);
+    context.fillRect(56 + index * 76, 76, 22, 6);
+  }
+
+  context.strokeStyle = rgbToString(theme.alertColor, 0.26);
+  context.lineWidth = 2;
+  context.strokeRect(88, 136, 184, 286);
+  context.strokeRect(118, 168, 124, 224);
+  drawChevronStrip(88, 430, 184, 16, theme.alertColor, 0.12);
+
+  context.fillStyle = rgbToString(theme.glowColor, 0.1);
+  context.fillRect(120, 170, 120, 220);
+
+  context.strokeStyle = rgbToString(theme.accentColor, 0.22);
+  for (let index = 0; index < 5; index += 1) {
+    context.beginPath();
+    context.moveTo(138, 196 + index * 40);
+    context.lineTo(222, 196 + index * 40);
+    context.stroke();
+  }
+}
+
+function drawLaunchScene() {
+  const time = performance.now() * 0.0002;
+  const theme = getWorldThemeForDepth(1.3 + intro.launchProgress * 0.7);
+  const hatchOpen = smoothstep(0.08, 0.58, intro.launchProgress);
+  const dropAmount = smoothstep(0.34, 1, intro.launchProgress);
+
+  drawWorldGradient(theme, time);
+  drawDialogueScene();
+
+  const doorTravel = 96 * hatchOpen;
+  context.fillStyle = rgbToString([9, 12, 20], 0.96);
+  context.fillRect(88, 146 - doorTravel, 184, 64);
+  context.fillRect(88, 358 + doorTravel, 184, 64);
+
+  const shaftGlow = context.createLinearGradient(0, 180, 0, GAME_HEIGHT);
+  shaftGlow.addColorStop(0, rgbToString(theme.glowColor, 0));
+  shaftGlow.addColorStop(1, rgbToString(mixRgb(theme.alertColor, theme.accentColor, 0.28), 0.28 + intro.launchProgress * 0.22));
+  context.fillStyle = shaftGlow;
+  context.fillRect(118, 196, 124, GAME_HEIGHT - 196);
+
+  context.save();
+  context.translate(GAME_WIDTH * 0.5, lerp(178, 388, dropAmount));
+  context.rotate(0.06);
+  context.fillStyle = rgbToString([255, 255, 255], 0.88);
+  context.beginPath();
+  context.moveTo(0, -18);
+  context.lineTo(16, 10);
+  context.lineTo(0, 6);
+  context.lineTo(-16, 10);
+  context.closePath();
+  context.fill();
+  context.fillStyle = rgbToString(theme.accentColor, 0.36);
+  context.fillRect(-3, 10, 6, 24);
+  context.restore();
+}
+
 function drawFloors() {
   game.floors.forEach((floor) => {
     const leftWidth = floor.gapX;
@@ -1926,17 +2378,27 @@ function drawBall() {
 }
 
 function drawFrame() {
-  drawBackground();
-  drawFloors();
-  drawBall();
+  if (intro.mode === 'title') {
+    drawTitleScene();
+  } else if (intro.mode === 'dialogue') {
+    drawDialogueScene();
+  } else if (intro.mode === 'launch') {
+    drawLaunchScene();
+  } else {
+    drawBackground();
+    drawFloors();
+    drawBall();
 
-  context.fillStyle = 'rgba(255, 255, 255, 0.9)';
-  context.font = '700 11px "Eurostile", "Trebuchet MS", sans-serif';
-  context.fillText(`Score ${Math.ceil(game.score)}`, 16, 22);
-  context.fillText(`Level ${game.level}`, GAME_WIDTH - 74, 22);
+    context.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    context.font = '700 11px "Eurostile", "Trebuchet MS", sans-serif';
+    context.fillText(`Score ${Math.ceil(game.score)}`, 16, 22);
+    context.fillText(`Level ${game.level}`, GAME_WIDTH - 74, 22);
+  }
 }
 
 function frame(timestamp) {
+  updateIntroSequence(timestamp);
+
   if (game.running) {
     if (!game.lastTimestamp) {
       game.lastTimestamp = timestamp;
@@ -1961,6 +2423,29 @@ function updateDirectionalInput(direction, isActive) {
   });
 }
 
+function handlePrimaryAction() {
+  if (intro.mode === 'title' || intro.mode === 'dialogue') {
+    advanceIntroSequence();
+    return;
+  }
+
+  if (intro.mode === 'launch') {
+    return;
+  }
+
+  if (game.gameOver) {
+    startGame(true);
+    return;
+  }
+
+  if (!game.started) {
+    beginIntroSequence();
+    return;
+  }
+
+  pauseGame();
+}
+
 function handleKeyState(event, isActive) {
   const key = event.key.toLowerCase();
 
@@ -1981,15 +2466,18 @@ function handleKeyState(event, isActive) {
   }
 
   if (isActive && key === 'p') {
-    pauseGame();
+    if (intro.mode === 'none' && (game.running || game.paused)) {
+      pauseGame();
+    }
   }
 
   if (isActive && (event.code === 'Space' || key === ' ')) {
-    if (!game.started || game.gameOver) {
-      startGame(true);
-    } else {
-      pauseGame();
-    }
+    handlePrimaryAction();
+    event.preventDefault();
+  }
+
+  if (isActive && key === 'enter' && (intro.mode === 'title' || intro.mode === 'dialogue')) {
+    advanceIntroSequence();
     event.preventDefault();
   }
 
@@ -2000,12 +2488,7 @@ function handleKeyState(event, isActive) {
 }
 
 function togglePlayfieldState() {
-  if (!game.started || game.gameOver) {
-    startGame(true);
-    return;
-  }
-
-  pauseGame();
+  handlePrimaryAction();
 }
 
 function applyDifficultyChange(nextDifficulty) {
@@ -2044,6 +2527,9 @@ touchButtons.forEach((button) => {
 
   const activate = (event) => {
     event.preventDefault();
+    if (!game.running && !game.paused) {
+      return;
+    }
     updateDirectionalInput(direction, true);
   };
 
@@ -2067,7 +2553,7 @@ gameFrame.addEventListener('click', (event) => {
 });
 
 startButton.addEventListener('click', () => {
-  startGame(true);
+  handlePrimaryAction();
 });
 
 pauseButton.addEventListener('click', pauseGame);
