@@ -26,6 +26,13 @@ const MAX_HORIZONTAL_SPEED = 235;
 const GRAVITY = 1180;
 const MAX_PHYSICS_TRAVEL_PER_STEP = 12;
 const MAX_PHYSICS_SUBSTEPS = 6;
+const ENDGAME_TRIGGER_LEVEL = 72;
+const CORE_BOSS_DURATION = 28;
+const CORE_SPRINT_DURATION = 12;
+const CORE_ACTIVATION_DURATION = 4.8;
+const SPRINT_TRACK_Y = GAME_HEIGHT - 108;
+const SPRINT_NODE_X = GAME_WIDTH - 44;
+const SPRINT_HAZARD_INTERVAL = 0.88;
 
 const canvas = document.getElementById('game-canvas');
 const context = canvas.getContext('2d');
@@ -94,6 +101,17 @@ const intro = {
   pauseUntil: 0,
   launchStartTime: 0,
   launchProgress: 0,
+};
+
+const endgame = {
+  phase: 'none',
+  bossTimer: 0,
+  nextBossRowIndex: 0,
+  sprintTimer: 0,
+  sprintHazardTimer: 0,
+  sprintHazards: [],
+  activationTimer: 0,
+  endingIndex: 0,
 };
 
 const soundtrack = {
@@ -335,11 +353,72 @@ const SPEAKERS = {
     suit: [72, 90, 122],
     visor: [106, 232, 255],
   },
+  her: {
+    label: 'HER',
+    color: '#ffe08a',
+    accent: [255, 224, 138],
+    shadow: [92, 54, 20],
+    suit: [124, 76, 54],
+    visor: [255, 238, 184],
+  },
 };
 
 const DIALOGUE_CHAR_MS = 24;
 const DIALOGUE_LINE_PAUSE_MS = 260;
 const LAUNCH_DURATION_MS = 1650;
+
+const CORE_BOSS_PATTERNS = [
+  { center: 0.5, width: 84 },
+  { center: 0.5, width: 72 },
+  { center: 0.22, width: 74 },
+  { center: 0.78, width: 74 },
+  { center: 0.34, width: 68 },
+  { center: 0.66, width: 68 },
+  { center: 0.5, width: 62 },
+  { center: 0.18, width: 72 },
+  { center: 0.82, width: 72 },
+  { center: 0.42, width: 64 },
+  { center: 0.58, width: 64 },
+  { center: 0.5, width: 58 },
+];
+
+const ENDING_SCREENS = [
+  {
+    type: 'system',
+    label: 'SYSTEM',
+    title: 'CORE SYNCHRONIZED',
+    html: 'VX-99: STABLE',
+    prompt: 'PRESS START',
+  },
+  {
+    type: 'dialogue',
+    badge: 'Command Link',
+    lines: [
+      { speaker: 'command', text: 'You did it, Jett.' },
+      { speaker: 'command', text: 'The whole planet’s lighting back up.' },
+      { speaker: 'jett', text: 'Yeah.' },
+      { speaker: 'jett', text: 'I noticed.' },
+    ],
+    prompt: 'PRESS START',
+  },
+  {
+    type: 'dialogue',
+    badge: 'Return Channel',
+    lines: [
+      { speaker: 'her', text: 'You’re still a fool.' },
+      { speaker: 'jett', text: 'Maybe.' },
+      { speaker: 'jett', text: 'But I made it back.' },
+    ],
+    prompt: 'PRESS START',
+  },
+  {
+    type: 'credits',
+    label: 'THANK YOU FOR PLAYING',
+    title: 'CORE DROP',
+    html: 'Designed by <strong>DaPuzzler</strong><br>See you on the next drop.',
+    prompt: 'PRESS START FOR TITLE',
+  },
+];
 
 const LOOP_CHORDS = [
   { root: 45, tones: [57, 60, 64] },
@@ -1194,6 +1273,35 @@ function createFloor(y, difficultyIndex) {
   };
 }
 
+function createCoreBossFloor(y, rowIndex) {
+  const pattern = CORE_BOSS_PATTERNS[rowIndex % CORE_BOSS_PATTERNS.length];
+  const margin = 18;
+  const gapWidth = pattern.width;
+  const minCenter = margin + gapWidth * 0.5;
+  const maxCenter = GAME_WIDTH - margin - gapWidth * 0.5;
+  const gapCenter = lerp(minCenter, maxCenter, pattern.center);
+
+  return {
+    y,
+    thickness: FLOOR_THICKNESS + 2,
+    gapX: gapCenter - gapWidth * 0.5,
+    gapWidth,
+    glow: rowIndex % 2 === 0 ? 96 : 56,
+    kind: 'core',
+  };
+}
+
+function resetEndgameState() {
+  endgame.phase = 'none';
+  endgame.bossTimer = 0;
+  endgame.nextBossRowIndex = 0;
+  endgame.sprintTimer = CORE_SPRINT_DURATION;
+  endgame.sprintHazardTimer = 0;
+  endgame.sprintHazards = [];
+  endgame.activationTimer = 0;
+  endgame.endingIndex = 0;
+}
+
 function shiftWorldUp(amount) {
   if (amount <= 0) {
     return;
@@ -1212,7 +1320,12 @@ function resetFloors() {
 
   for (let index = 0; index < FLOOR_COUNT; index += 1) {
     const y = lowestStartY - index * FLOOR_SPACING;
-    game.floors.push(createFloor(y, index));
+    if (endgame.phase === 'boss') {
+      game.floors.push(createCoreBossFloor(y, endgame.nextBossRowIndex));
+      endgame.nextBossRowIndex += 1;
+    } else {
+      game.floors.push(createFloor(y, index));
+    }
   }
 }
 
@@ -1225,6 +1338,15 @@ function setOverlayMode(mode) {
   overlay.dataset.mode = mode;
   overlayGeneric.hidden = mode === 'dialogue';
   overlayDialogue.hidden = mode !== 'dialogue';
+  overlay.hidden = false;
+}
+
+function showOverlayHtml(label, title, html, prompt = '') {
+  setOverlayMode('generic');
+  overlayLabel.textContent = label;
+  overlayTitle.textContent = title;
+  overlayCopy.innerHTML = html;
+  setOverlayPrompt(prompt, Boolean(prompt));
   overlay.hidden = false;
 }
 
@@ -1272,16 +1394,26 @@ function drawDialoguePortrait(speakerKey) {
   portraitContext.strokeRect(2.5, 2.5, 59, 59);
 }
 
-function renderDialogueOverlay() {
-  const speaker = SPEAKERS[intro.activeSpeaker] || SPEAKERS.command;
+function renderDialoguePanel(lines, activeSpeaker, prompt = '', badgeText = 'Live') {
+  const speaker = SPEAKERS[activeSpeaker] || SPEAKERS.command;
   setOverlayMode('dialogue');
-  dialogueBadge.textContent = intro.mode === 'launch' ? 'Drop' : 'Live';
+  dialogueBadge.textContent = badgeText;
   dialogueSpeaker.textContent = speaker.label;
   dialogueSpeaker.style.color = speaker.color;
-  dialogueLines.innerHTML = intro.visibleLines
+  dialogueLines.innerHTML = lines
     .map((line) => `<p class="dialogue-line"><span class="dialogue-line-speaker ${line.speaker}">${SPEAKERS[line.speaker].label}:</span>${line.text}</p>`)
     .join('');
-  drawDialoguePortrait(intro.activeSpeaker);
+  setOverlayPrompt(prompt, Boolean(prompt));
+  drawDialoguePortrait(activeSpeaker);
+}
+
+function renderDialogueOverlay() {
+  renderDialoguePanel(
+    intro.visibleLines,
+    intro.activeSpeaker,
+    overlayPrompt.hidden ? '' : overlayPrompt.textContent,
+    intro.mode === 'launch' ? 'Drop' : 'Live'
+  );
 }
 
 function playUiConfirmSound() {
@@ -1465,6 +1597,281 @@ function updateIntroSequence(timestamp) {
       intro.mode = 'none';
       startGame(true);
     }
+  }
+}
+
+function createSprintHazard() {
+  const type = randomFromSeed(game.elapsed * 13.7 + endgame.sprintTimer * 2.1) > 0.45 ? 'debris' : 'strike';
+
+  if (type === 'debris') {
+    return {
+      type,
+      x: 28 + randomFromSeed(game.elapsed * 5.1 + endgame.sprintTimer) * (GAME_WIDTH - 56),
+      y: -24,
+      width: 18 + randomFromSeed(game.elapsed * 3.4 + 7) * 16,
+      height: 18 + randomFromSeed(game.elapsed * 4.8 + 3) * 18,
+      vy: 250 + randomFromSeed(game.elapsed * 6.2 + 11) * 120,
+      active: true,
+    };
+  }
+
+  return {
+    type,
+    x: 34 + randomFromSeed(game.elapsed * 7.3 + endgame.sprintTimer * 4.3) * (GAME_WIDTH - 68),
+    y: 0,
+    width: 26,
+    telegraph: 0.62,
+    duration: 0.2,
+    active: false,
+  };
+}
+
+function beginCoreBossPhase() {
+  endgame.phase = 'boss';
+  endgame.bossTimer = 0;
+  endgame.nextBossRowIndex = 0;
+  game.scrollSpeed = Math.max(getDifficultyConfig().maxScrollSpeed * 0.82, 220);
+  game.catchUpSpeed = 0;
+  game.ball.vx = 0;
+  game.ball.vy = 0;
+  resetFloors();
+  hideOverlay();
+  setStatus('Living Core');
+  setSummary('The living core is active. Its chamber is rejecting you with deliberate defense patterns.');
+  pauseButton.disabled = false;
+  startButton.textContent = 'Abort?';
+}
+
+function beginSprintPhase() {
+  endgame.phase = 'sprint';
+  endgame.sprintTimer = CORE_SPRINT_DURATION;
+  endgame.sprintHazardTimer = 0.45;
+  endgame.sprintHazards = [];
+  game.ball.x = 36;
+  game.ball.y = SPRINT_TRACK_Y - BALL_RADIUS;
+  game.ball.vx = 0;
+  game.ball.vy = 0;
+  game.trail = [];
+  setStatus('Ignition Sprint');
+  setSummary('The chamber is breaking apart. Reach the ignition node before the synchronization window collapses.');
+}
+
+function beginActivationSequence() {
+  endgame.phase = 'activation';
+  endgame.activationTimer = 0;
+  endgame.sprintHazards = [];
+  game.ball.x = SPRINT_NODE_X;
+  game.ball.y = SPRINT_TRACK_Y - BALL_RADIUS;
+  game.ball.vx = 0;
+  game.ball.vy = 0;
+  setStatus('Core Ignition');
+  setSummary('Synchronization accepted. The living core is rebooting through Jett’s ignition link.');
+}
+
+function showEndingScreen(index) {
+  const screen = ENDING_SCREENS[index];
+
+  if (!screen) {
+    resetGame();
+    return;
+  }
+
+  endgame.endingIndex = index;
+  endgame.phase = 'ending';
+  game.running = false;
+  game.paused = false;
+
+  if (screen.type === 'dialogue') {
+    const activeSpeaker = screen.lines[screen.lines.length - 1].speaker;
+    renderDialoguePanel(screen.lines, activeSpeaker, screen.prompt, screen.badge || 'Archive');
+  } else {
+    showOverlayHtml(screen.label, screen.title, screen.html, screen.prompt);
+  }
+
+  if (screen.type === 'credits') {
+    setStatus('Transmission Closed');
+    setSummary('VX-99 is stable. Jett made the drop and came back alive.');
+  } else {
+    setStatus('Victory');
+  }
+}
+
+function beginEndingSequence() {
+  showEndingScreen(0);
+}
+
+function advanceEndingSequence() {
+  if (endgame.phase !== 'ending') {
+    return;
+  }
+
+  playUiConfirmSound();
+  showEndingScreen(endgame.endingIndex + 1);
+}
+
+function runVerticalPhysics(deltaTime, scoreRate) {
+  const estimatedTravel =
+    game.scrollSpeed * deltaTime +
+    Math.abs(game.ball.vy) * deltaTime +
+    0.5 * GRAVITY * deltaTime * deltaTime;
+  const substeps = clamp(
+    Math.ceil(estimatedTravel / MAX_PHYSICS_TRAVEL_PER_STEP),
+    1,
+    MAX_PHYSICS_SUBSTEPS
+  );
+  const stepDelta = deltaTime / substeps;
+
+  for (let step = 0; step < substeps; step += 1) {
+    const scrollStep = game.scrollSpeed * stepDelta;
+
+    game.floors.forEach((floor) => {
+      floor.y -= scrollStep;
+    });
+
+    recycleFloors();
+    updateInputAxis(stepDelta);
+
+    game.ball.vy += GRAVITY * stepDelta;
+    const previousY = game.ball.y;
+
+    game.ball.x += game.ball.vx * stepDelta;
+    game.ball.y += game.ball.vy * stepDelta;
+
+    game.ball.x = clamp(game.ball.x, BALL_RADIUS, GAME_WIDTH - BALL_RADIUS);
+    resolveFloorCollisions(previousY, scrollStep);
+
+    const rescueLine = GAME_HEIGHT - FLOOR_SPACING * 1.18;
+    const visibleLine = GAME_HEIGHT - BALL_RADIUS * 1.35;
+    const rescueOverflow = Math.max(0, game.ball.y - rescueLine);
+
+    if (rescueOverflow > 0) {
+      const targetCatchUpSpeed = rescueOverflow * 10 + game.scrollSpeed * 0.55;
+      const catchUpBlend = 1 - Math.exp(-8 * stepDelta);
+      const minimumVisibleShift = Math.max(0, game.ball.y - visibleLine);
+
+      game.catchUpSpeed = lerp(game.catchUpSpeed, targetCatchUpSpeed, catchUpBlend);
+
+      shiftWorldUp(
+        Math.max(
+          minimumVisibleShift,
+          Math.min(rescueOverflow, game.catchUpSpeed * stepDelta)
+        )
+      );
+      recycleFloors();
+    } else if (game.catchUpSpeed > 0.1) {
+      game.catchUpSpeed *= Math.exp(-10 * stepDelta);
+    }
+
+    if (game.ball.y - BALL_RADIUS <= 0) {
+      endGame('You were pinned against the ceiling by the rising grid.');
+      break;
+    }
+  }
+
+  updateTrail();
+
+  if (game.gameOver) {
+    return;
+  }
+
+  game.elapsed += deltaTime;
+  game.score += deltaTime * scoreRate;
+}
+
+function updateCoreBossPhase(deltaTime) {
+  endgame.bossTimer += deltaTime;
+  game.scrollSpeed = 210 + Math.sin(endgame.bossTimer * 1.4) * 12 + getDifficultyConfig().maxScrollSpeed * 0.08;
+  runVerticalPhysics(deltaTime, getDifficultyConfig().scoreRate * 0.55);
+
+  if (game.gameOver) {
+    return;
+  }
+
+  if (endgame.bossTimer >= CORE_BOSS_DURATION) {
+    beginSprintPhase();
+  }
+}
+
+function updateSprintPhase(deltaTime) {
+  endgame.sprintTimer -= deltaTime;
+  endgame.sprintHazardTimer -= deltaTime;
+
+  updateInputAxis(deltaTime);
+  game.ball.x += game.ball.vx * deltaTime;
+  game.ball.x = clamp(game.ball.x, BALL_RADIUS + 4, GAME_WIDTH - BALL_RADIUS - 4);
+  game.ball.y = SPRINT_TRACK_Y - BALL_RADIUS;
+  game.ball.vy = 0;
+  updateTrail();
+
+  if (endgame.sprintHazardTimer <= 0) {
+    endgame.sprintHazards.push(createSprintHazard());
+    endgame.sprintHazardTimer = SPRINT_HAZARD_INTERVAL * lerp(0.9, 0.55, 1 - endgame.sprintTimer / CORE_SPRINT_DURATION);
+  }
+
+  endgame.sprintHazards = endgame.sprintHazards.filter((hazard) => {
+    if (hazard.type === 'debris') {
+      hazard.y += hazard.vy * deltaTime;
+      if (hazard.y > GAME_HEIGHT + 32) {
+        return false;
+      }
+
+      const overlapsX = game.ball.x + BALL_RADIUS > hazard.x - hazard.width * 0.5 && game.ball.x - BALL_RADIUS < hazard.x + hazard.width * 0.5;
+      const overlapsY = game.ball.y + BALL_RADIUS > hazard.y && game.ball.y - BALL_RADIUS < hazard.y + hazard.height;
+
+      if (overlapsX && overlapsY) {
+        endGame('Falling core debris crushed the sprint lane before ignition.');
+        return false;
+      }
+
+      return true;
+    }
+
+    if (!hazard.active) {
+      hazard.telegraph -= deltaTime;
+      if (hazard.telegraph <= 0) {
+        hazard.active = true;
+      }
+      return true;
+    }
+
+    hazard.duration -= deltaTime;
+    const insideStrike = Math.abs(game.ball.x - hazard.x) < hazard.width * 0.5 + BALL_RADIUS;
+
+    if (insideStrike) {
+      endGame('A core discharge sealed the ignition path before you could cross it.');
+      return false;
+    }
+
+    return hazard.duration > 0;
+  });
+
+  game.elapsed += deltaTime;
+  game.score += deltaTime * getDifficultyConfig().scoreRate * 0.35;
+
+  if (game.gameOver) {
+    return;
+  }
+
+  if (endgame.sprintTimer <= 0) {
+    endGame('The ignition window collapsed before you could stabilize the core.');
+    return;
+  }
+
+  if (game.ball.x >= SPRINT_NODE_X) {
+    beginActivationSequence();
+  }
+}
+
+function updateActivationSequence(deltaTime) {
+  endgame.activationTimer += deltaTime;
+  game.ball.vx = 0;
+  game.ball.vy = 0;
+  game.ball.x = SPRINT_NODE_X;
+  game.ball.y = SPRINT_TRACK_Y - BALL_RADIUS;
+  updateTrail();
+
+  if (endgame.activationTimer >= CORE_ACTIVATION_DURATION) {
+    beginEndingSequence();
   }
 }
 
@@ -2375,6 +2782,77 @@ function drawBall() {
   context.fillStyle = '#ffd76e';
   context.arc(game.ball.x, game.ball.y, BALL_RADIUS, 0, Math.PI * 2);
   context.fill();
+
+  context.save();
+  context.beginPath();
+  context.arc(game.ball.x, game.ball.y, BALL_RADIUS - 1, 0, Math.PI * 2);
+  context.clip();
+
+  const cockpit = context.createLinearGradient(
+    game.ball.x - BALL_RADIUS,
+    game.ball.y - BALL_RADIUS,
+    game.ball.x + BALL_RADIUS,
+    game.ball.y + BALL_RADIUS
+  );
+  cockpit.addColorStop(0, 'rgba(255, 255, 255, 0.34)');
+  cockpit.addColorStop(0.38, 'rgba(255, 239, 170, 0.18)');
+  cockpit.addColorStop(1, 'rgba(255, 160, 44, 0.04)');
+  context.fillStyle = cockpit;
+  context.fillRect(
+    game.ball.x - BALL_RADIUS,
+    game.ball.y - BALL_RADIUS,
+    BALL_RADIUS * 2,
+    BALL_RADIUS * 2
+  );
+
+  context.strokeStyle = 'rgba(255, 244, 210, 0.42)';
+  context.lineWidth = 1.4;
+  context.beginPath();
+  context.arc(game.ball.x - 1, game.ball.y, BALL_RADIUS * 0.66, -1.18, 1.05);
+  context.stroke();
+
+  context.fillStyle = 'rgba(255, 86, 214, 0.7)';
+  context.fillRect(game.ball.x - 1.6, game.ball.y - BALL_RADIUS + 2.4, 3.2, BALL_RADIUS * 1.12);
+
+  context.fillStyle = 'rgba(73, 26, 9, 0.72)';
+  context.beginPath();
+  context.arc(game.ball.x - 1.5, game.ball.y + 1, 2.1, 0, Math.PI * 2);
+  context.fill();
+
+  context.fillStyle = 'rgba(255, 246, 232, 0.86)';
+  context.beginPath();
+  context.arc(game.ball.x - 1.5, game.ball.y + 0.7, 1.2, 0, Math.PI * 2);
+  context.fill();
+
+  context.fillStyle = 'rgba(41, 46, 62, 0.95)';
+  context.beginPath();
+  context.arc(game.ball.x - 1.3, game.ball.y - 0.2, 1.35, 0, Math.PI * 2);
+  context.fill();
+
+  context.fillStyle = 'rgba(45, 52, 71, 0.95)';
+  context.beginPath();
+  context.moveTo(game.ball.x - 2.2, game.ball.y + 2.4);
+  context.lineTo(game.ball.x + 2.7, game.ball.y + 1.2);
+  context.lineTo(game.ball.x + 2, game.ball.y + 5.4);
+  context.lineTo(game.ball.x - 1.2, game.ball.y + 5.8);
+  context.closePath();
+  context.fill();
+
+  context.fillStyle = 'rgba(108, 241, 255, 0.95)';
+  context.fillRect(game.ball.x - 0.2, game.ball.y + 1.5, 2.4, 0.95);
+
+  context.fillStyle = 'rgba(255, 255, 255, 0.55)';
+  context.beginPath();
+  context.ellipse(game.ball.x - 4.5, game.ball.y - 4.4, 2.6, 1.5, -0.8, 0, Math.PI * 2);
+  context.fill();
+
+  context.restore();
+
+  context.strokeStyle = 'rgba(255, 247, 210, 0.72)';
+  context.lineWidth = 1;
+  context.beginPath();
+  context.arc(game.ball.x, game.ball.y, BALL_RADIUS - 0.5, 0, Math.PI * 2);
+  context.stroke();
 }
 
 function drawFrame() {
@@ -2578,7 +3056,7 @@ document.addEventListener('pointerdown', () => {
 window.addEventListener('resize', setCanvasResolution);
 
 setCanvasResolution();
-setImmersiveMode(true);
+setImmersiveMode(false);
 setMusicButtonState();
 setImmersiveButtonState();
 setDifficultyControlState();
