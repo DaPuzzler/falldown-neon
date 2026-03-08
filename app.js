@@ -179,7 +179,7 @@ const DIFFICULTY_LEVELS = {
   easy: {
     label: 'Easy',
     baseScrollSpeed: 92,
-    maxScrollSpeed: 232,
+    maxScrollSpeed: 220,
     scrollRamp: 0.46,
     baseGapWidth: 136,
     minGapWidth: 86,
@@ -187,7 +187,8 @@ const DIFFICULTY_LEVELS = {
     scoreRate: 42,
     moveAcceleration: 1340,
     maxHorizontalSpeed: 248,
-    floorReachScale: 0.78,
+    floorReachScale: 0.88,
+    floorOverlapTarget: 30,
     bossBaseScrollSpeed: 168,
     bossWaveAmplitude: 7,
     bossGapBonus: 14,
@@ -201,7 +202,7 @@ const DIFFICULTY_LEVELS = {
   normal: {
     label: 'Normal',
     baseScrollSpeed: 112,
-    maxScrollSpeed: 298,
+    maxScrollSpeed: 280,
     scrollRamp: 0.72,
     baseGapWidth: 122,
     minGapWidth: 72,
@@ -209,7 +210,8 @@ const DIFFICULTY_LEVELS = {
     scoreRate: 50,
     moveAcceleration: 1440,
     maxHorizontalSpeed: 266,
-    floorReachScale: 0.84,
+    floorReachScale: 0.9,
+    floorOverlapTarget: 22,
     bossBaseScrollSpeed: 182,
     bossWaveAmplitude: 8,
     bossGapBonus: 8,
@@ -223,7 +225,7 @@ const DIFFICULTY_LEVELS = {
   hard: {
     label: 'Hard',
     baseScrollSpeed: 132,
-    maxScrollSpeed: 350,
+    maxScrollSpeed: 330,
     scrollRamp: 0.92,
     baseGapWidth: 112,
     minGapWidth: 66,
@@ -231,7 +233,8 @@ const DIFFICULTY_LEVELS = {
     scoreRate: 58,
     moveAcceleration: 1560,
     maxHorizontalSpeed: 286,
-    floorReachScale: 0.9,
+    floorReachScale: 0.93,
+    floorOverlapTarget: 14,
     bossBaseScrollSpeed: 198,
     bossWaveAmplitude: 9,
     bossGapBonus: 2,
@@ -245,7 +248,7 @@ const DIFFICULTY_LEVELS = {
   impossible: {
     label: 'Impossible',
     baseScrollSpeed: 148,
-    maxScrollSpeed: 390,
+    maxScrollSpeed: 370,
     scrollRamp: 1.08,
     baseGapWidth: 104,
     minGapWidth: 62,
@@ -254,6 +257,7 @@ const DIFFICULTY_LEVELS = {
     moveAcceleration: 1700,
     maxHorizontalSpeed: 308,
     floorReachScale: 0.96,
+    floorOverlapTarget: 8,
     bossBaseScrollSpeed: 214,
     bossWaveAmplitude: 10,
     bossGapBonus: -4,
@@ -1652,6 +1656,19 @@ function currentGapWidth() {
   );
 }
 
+function getReachableHorizontalDistance(config, travelTime) {
+  const timeToMaxSpeed = config.maxHorizontalSpeed / Math.max(config.moveAcceleration, 1);
+
+  if (travelTime <= timeToMaxSpeed) {
+    return 0.5 * config.moveAcceleration * travelTime * travelTime;
+  }
+
+  return (
+    0.5 * config.moveAcceleration * timeToMaxSpeed * timeToMaxSpeed +
+    config.maxHorizontalSpeed * (travelTime - timeToMaxSpeed)
+  );
+}
+
 function createFloor(y, difficultyIndex) {
   const config = getDifficultyConfig();
   const gapWidth = currentGapWidth();
@@ -1669,9 +1686,14 @@ function createFloor(y, difficultyIndex) {
   const targetCenter = lerp(minCenter, maxCenter, normalizedWave);
   const previousCenter = Number.isFinite(game.lastGapCenter) ? game.lastGapCenter : GAME_WIDTH * 0.5;
   const rowTravelTime = FLOOR_SPACING / Math.max(config.baseScrollSpeed, game.scrollSpeed || config.baseScrollSpeed, 1);
-  const reachableShift = config.maxHorizontalSpeed * rowTravelTime * config.floorReachScale;
-  const maxShift = clamp(Math.min(lerp(78, 108, depthProgress), reachableShift), 52, 108);
-  const minShift = clamp(Math.min(lerp(26, 18, depthProgress), maxShift - 10), 14, 28);
+  const reachableShift = getReachableHorizontalDistance(config, rowTravelTime) * config.floorReachScale;
+  const overlapLimitedShift = Math.max(18, gapWidth - config.floorOverlapTarget);
+  const maxShift = clamp(
+    Math.min(lerp(78, 108, depthProgress), reachableShift, overlapLimitedShift),
+    18,
+    96
+  );
+  const minShift = clamp(Math.min(lerp(26, 18, depthProgress), maxShift - 8), 12, 28);
   const fallbackDirection = difficultyIndex % 2 === 0 ? 1 : -1;
   const signedShift = targetCenter - previousCenter;
   let nextCenter = clamp(targetCenter, previousCenter - maxShift, previousCenter + maxShift);
