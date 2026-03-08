@@ -475,6 +475,16 @@ body.immersive-mode .game-frame {
   color: var(--cyan-hot);
 }
 
+.stat-subvalue {
+  display: block;
+  margin-top: 0.28rem;
+  color: rgba(234, 248, 255, 0.78);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.25;
+}
+
 .actions,
 .touch-controls {
   display: grid;

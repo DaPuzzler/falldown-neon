@@ -26,8 +26,8 @@ const MAX_HORIZONTAL_SPEED = 235;
 const GRAVITY = 1180;
 const MAX_PHYSICS_TRAVEL_PER_STEP = 12;
 const MAX_PHYSICS_SUBSTEPS = 6;
-const SCORE_PER_LEVEL = 800;
-const NORMAL_DESCENT_LEVELS = 56;
+const SCORE_PER_LEVEL = 3600;
+const NORMAL_DESCENT_LEVELS = 7;
 const ENDGAME_TRIGGER_LEVEL = NORMAL_DESCENT_LEVELS + 1;
 const CORE_BOSS_DURATION = 28;
 const CORE_LANDING_DURATION = 1.9;
@@ -37,7 +37,10 @@ const SPRINT_TRACK_Y = GAME_HEIGHT - 108;
 const SPRINT_NODE_X = GAME_WIDTH - 28;
 const SPRINT_HAZARD_INTERVAL = 0.88;
 const DEBUG_ENDGAME_SCORE = (ENDGAME_TRIGGER_LEVEL - 1) * SCORE_PER_LEVEL;
-const WORLD_ZONE_THRESHOLDS = [0, 0.12, 0.25, 0.4, 0.58, 0.73, 0.88, 1];
+const WORLD_ZONE_THRESHOLDS = Array.from(
+  { length: NORMAL_DESCENT_LEVELS + 1 },
+  (_, index) => index / NORMAL_DESCENT_LEVELS
+);
 
 const canvas = document.getElementById('game-canvas');
 const context = canvas.getContext('2d');
@@ -56,6 +59,7 @@ const statusText = document.getElementById('status-text');
 const scoreValue = document.getElementById('score-value');
 const bestValue = document.getElementById('best-value');
 const levelValue = document.getElementById('level-value');
+const zoneValue = document.getElementById('zone-value');
 const speedValue = document.getElementById('speed-value');
 const runSummary = document.getElementById('run-summary');
 const startButton = document.getElementById('start-button');
@@ -92,6 +96,7 @@ const game = {
   ball: createBall(),
   floors: [],
   trail: [],
+  lastGapCenter: GAME_WIDTH * 0.5,
 };
 
 const intro = {
@@ -1645,26 +1650,39 @@ function currentGapWidth() {
 function createFloor(y, difficultyIndex) {
   const gapWidth = currentGapWidth();
   const margin = 26;
-  const minGapX = margin;
-  const maxGapX = GAME_WIDTH - gapWidth - margin;
+  const minCenter = margin + gapWidth * 0.5;
+  const maxCenter = GAME_WIDTH - margin - gapWidth * 0.5;
   const depthProgress = getRunDepthProgress();
   const lateSpread = smoothstep(0.73, 1, depthProgress);
-  const phase = (difficultyIndex + depthProgress * 38 + game.elapsed * 0.28) * (0.88 + lateSpread * 0.42);
-  let wave = Math.sin(phase) * 0.5 + 0.5;
+  const phase = difficultyIndex * (0.98 + lateSpread * 0.16) + depthProgress * 11.5 + game.elapsed * 0.12;
+  const wave =
+    Math.sin(phase) * 0.34 +
+    Math.sin(phase * 1.78 + 1.15) * 0.21 +
+    Math.sin(phase * 2.46 + 0.4) * 0.1;
+  const normalizedWave = clamp(0.5 + wave, 0.05, 0.95);
+  const targetCenter = lerp(minCenter, maxCenter, normalizedWave);
+  const previousCenter = Number.isFinite(game.lastGapCenter) ? game.lastGapCenter : GAME_WIDTH * 0.5;
+  const minShift = lerp(18, 26, 1 - depthProgress * 0.35);
+  const maxShift = lerp(84, 122, depthProgress);
+  const fallbackDirection = difficultyIndex % 2 === 0 ? 1 : -1;
+  const signedShift = targetCenter - previousCenter;
+  let nextCenter = clamp(targetCenter, previousCenter - maxShift, previousCenter + maxShift);
 
-  if (lateSpread > 0) {
-    wave = wave < 0.5
-      ? wave * (1 - lateSpread * 0.68)
-      : 1 - (1 - wave) * (1 - lateSpread * 0.68);
+  if (Math.abs(nextCenter - previousCenter) < minShift) {
+    nextCenter = clamp(
+      previousCenter + Math.sign(signedShift || fallbackDirection) * minShift,
+      minCenter,
+      maxCenter
+    );
   }
 
-  const gapX = lerp(minGapX, maxGapX, wave);
+  game.lastGapCenter = nextCenter;
   const hueOffset = difficultyIndex % 2 === 0 ? 0 : 28;
 
   return {
     y,
     thickness: FLOOR_THICKNESS,
-    gapX,
+    gapX: nextCenter - gapWidth * 0.5,
     gapWidth,
     glow: hueOffset,
   };
@@ -1736,7 +1754,7 @@ function resetEndgameState() {
   endgame.endingIndex = 0;
 }
 
-function shiftWorldUp(amount) {
+function shiftWorldUp(amount, includeBall = true) {
   if (amount <= 0) {
     return;
   }
@@ -1745,12 +1763,18 @@ function shiftWorldUp(amount) {
     floor.y -= amount;
   });
 
-  game.ball.y -= amount;
+  if (includeBall) {
+    game.ball.y -= amount;
+  }
 }
 
 function resetFloors() {
   game.floors = [];
   const lowestStartY = GAME_HEIGHT - 62 + FLOOR_BUFFER_BELOW * FLOOR_SPACING;
+
+  if (endgame.phase !== 'boss') {
+    game.lastGapCenter = GAME_WIDTH * 0.5;
+  }
 
   for (let index = 0; index < FLOOR_COUNT; index += 1) {
     const y = lowestStartY - index * FLOOR_SPACING;
@@ -2542,15 +2566,14 @@ function runVerticalPhysics(deltaTime, scoreRate) {
       const targetCatchUpSpeed = rescueOverflow * 10 + game.scrollSpeed * 0.55;
       const catchUpBlend = 1 - Math.exp(-8 * stepDelta);
       const minimumVisibleShift = Math.max(0, game.ball.y - visibleLine);
+      const catchUpShift = Math.max(
+        minimumVisibleShift,
+        Math.min(rescueOverflow, game.catchUpSpeed * stepDelta)
+      );
 
       game.catchUpSpeed = lerp(game.catchUpSpeed, targetCatchUpSpeed, catchUpBlend);
-
-      shiftWorldUp(
-        Math.max(
-          minimumVisibleShift,
-          Math.min(rescueOverflow, game.catchUpSpeed * stepDelta)
-        )
-      );
+      shiftWorldUp(catchUpShift, false);
+      game.ball.y = Math.min(game.ball.y, visibleLine);
       recycleFloors();
     } else if (game.catchUpSpeed > 0.1) {
       game.catchUpSpeed *= Math.exp(-10 * stepDelta);
@@ -2729,7 +2752,7 @@ function startGame(forceReset = false) {
   game.gameOver = false;
   game.lastTimestamp = 0;
   setStatus('Live');
-  setSummary(`Run active on ${config.label} mode. Floors are rising faster and the grid will keep tightening as score climbs.`);
+  setSummary(`Run active on ${config.label} mode. Each level pushes you deeper toward the core and the floor patterns will keep tightening.`);
   hideOverlay();
   startButton.textContent = 'Restart Run';
   pauseButton.textContent = 'Pause';
@@ -2757,7 +2780,7 @@ function pauseGame() {
     pauseButton.textContent = 'Resume';
   } else {
     setStatus('Live');
-    setSummary('Run resumed. The scroll speed continues to ramp with your score.');
+    setSummary('Run resumed. The shaft keeps accelerating as the descent deepens.');
     hideOverlay();
     pauseButton.textContent = 'Pause';
   }
@@ -2822,6 +2845,7 @@ function updateHud() {
   scoreValue.textContent = String(Math.ceil(game.score));
   bestValue.textContent = String(game.best);
   levelValue.textContent = String(game.level);
+  zoneValue.textContent = getZoneLabel();
   speedValue.textContent = `${(game.scrollSpeed / config.baseScrollSpeed).toFixed(1)}x`;
 }
 
@@ -3870,16 +3894,6 @@ function drawBall() {
   context.stroke();
 }
 
-function drawZoneLabel() {
-  const zone = getZoneLabel();
-  context.save();
-  context.fillStyle = 'rgba(255, 255, 255, 0.82)';
-  context.font = '700 10px "Eurostile", "Trebuchet MS", sans-serif';
-  context.textAlign = 'right';
-  context.fillText(zone, GAME_WIDTH - 14, GAME_HEIGHT - 14);
-  context.restore();
-}
-
 function drawObjectiveRibbon() {
   const objective = getObjectiveLabel();
   if (!objective || intro.mode === 'title') {
@@ -3990,10 +4004,6 @@ function drawFrame() {
 
   if (intro.mode !== 'title') {
     drawObjectiveRibbon();
-  }
-
-  if (intro.mode === 'none' || endgame.phase !== 'none') {
-    drawZoneLabel();
   }
 
   drawPhaseCue();
