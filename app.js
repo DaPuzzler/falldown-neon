@@ -1420,24 +1420,52 @@ function drawDialoguePortrait(speakerKey) {
     });
   };
 
-  const skin = speakerKey === 'jett' ? '#ffcfaa' : '#d9c1a6';
-  const hair = speakerKey === 'jett' ? '#f8f4ff' : '#bcc7d8';
-  const suitGlow = rgbToString(speaker.accent, 0.9);
-  const visorGlow = rgbToString(speaker.visor, 0.85);
-
-  fillPixels([[2, 11, 12, 3], [2, 14, 5, 2], [9, 14, 5, 2], [1, 16, 14, 1]], rgbToString(speaker.suit, 0.95));
-  fillPixels([[4, 4, 8, 2], [3, 6, 10, 1], [4, 7, 8, 1]], hair);
-  fillPixels([[4, 8, 8, 5], [5, 13, 6, 1], [6, 14, 4, 1]], skin);
-  fillPixels([[5, 9, 2, 1], [9, 9, 2, 1]], visorGlow);
-  fillPixels([[5, 15, 2, 1], [9, 15, 2, 1], [3, 12, 1, 2], [12, 12, 1, 2]], suitGlow);
-  fillPixels([[6, 11, 1, 1], [10, 11, 1, 1], [7, 13, 3, 1]], '#12141c');
-
   if (speakerKey === 'jett') {
-    fillPixels([[2, 6, 2, 6], [12, 7, 2, 5], [3, 5, 1, 1], [11, 6, 1, 1]], rgbToString(speaker.accent, 0.95));
-    fillPixels([[8, 7, 2, 1], [9, 8, 2, 1]], '#ffffff');
+    const skin = '#e0a57f';
+    const hair = '#121318';
+    const jacket = rgbToString(speaker.suit, 0.96);
+    const accent = rgbToString(speaker.accent, 0.95);
+    const visor = rgbToString(speaker.visor, 0.9);
+
+    fillPixels([[2, 11, 12, 3], [2, 14, 5, 2], [9, 14, 5, 2], [1, 16, 14, 1]], jacket);
+    fillPixels([[2, 12, 2, 4], [12, 12, 2, 4], [3, 10, 1, 2], [11, 10, 1, 2]], accent);
+    fillPixels([[4, 5, 8, 2], [3, 7, 10, 1], [4, 8, 5, 1], [9, 7, 2, 1], [10, 8, 1, 1]], hair);
+    fillPixels([[4, 9, 8, 5], [5, 14, 6, 1]], skin);
+    fillPixels([[5, 10, 2, 1], [9, 10, 2, 1]], '#fff8ef');
+    fillPixels([[7, 12, 3, 1]], '#28160f');
+    fillPixels([[8, 13, 2, 1]], '#f7c8b8');
+    fillPixels([[10, 8, 2, 1], [11, 9, 1, 1]], visor);
+    fillPixels([[12, 6, 1, 6]], accent);
+  } else if (speakerKey === 'command') {
+    const skin = '#cdb39f';
+    const hair = '#f2f5ff';
+    const coat = rgbToString(speaker.suit, 0.96);
+    const trim = '#9fd5b7';
+    const visor = rgbToString(speaker.visor, 0.78);
+
+    fillPixels([[2, 11, 12, 3], [2, 14, 5, 2], [9, 14, 5, 2], [1, 16, 14, 1]], coat);
+    fillPixels([[2, 12, 2, 4], [12, 12, 2, 4], [5, 15, 4, 1], [9, 15, 2, 1]], trim);
+    fillPixels([[4, 4, 8, 2], [3, 6, 10, 1], [2, 7, 3, 1], [10, 7, 3, 1], [4, 8, 8, 1]], hair);
+    fillPixels([[4, 9, 8, 5], [5, 14, 6, 1]], skin);
+    fillPixels([[5, 10, 2, 1], [9, 10, 2, 1]], visor);
+    fillPixels([[7, 12, 3, 1]], '#3e2e26');
+    fillPixels([[8, 13, 2, 1]], '#e0c6b7');
+    fillPixels([[1, 7, 2, 6], [13, 8, 1, 5], [4, 7, 1, 1], [10, 7, 1, 1]], trim);
+    fillPixels([[6, 8, 4, 1]], rgbToString(speaker.visor, 0.72));
   } else {
-    fillPixels([[1, 7, 2, 6], [13, 8, 1, 5], [4, 7, 1, 1], [10, 7, 1, 1]], '#9fd5b7');
-    fillPixels([[7, 7, 2, 1], [6, 8, 4, 1]], rgbToString(speaker.visor, 0.7));
+    const skin = '#d8ab94';
+    const hair = '#f0d9b8';
+    const jacket = rgbToString(speaker.suit, 0.96);
+    const accent = rgbToString(speaker.accent, 0.92);
+    const visor = rgbToString(speaker.visor, 0.84);
+
+    fillPixels([[2, 11, 12, 3], [2, 14, 5, 2], [9, 14, 5, 2], [1, 16, 14, 1]], jacket);
+    fillPixels([[3, 12, 1, 3], [12, 12, 1, 3], [5, 15, 5, 1]], accent);
+    fillPixels([[4, 4, 8, 2], [3, 6, 10, 1], [4, 7, 8, 1], [3, 8, 2, 1], [11, 8, 2, 1]], hair);
+    fillPixels([[4, 9, 8, 5], [5, 14, 6, 1]], skin);
+    fillPixels([[5, 10, 2, 1], [9, 10, 2, 1]], visor);
+    fillPixels([[7, 12, 3, 1]], '#3a2222');
+    fillPixels([[8, 13, 2, 1]], '#f0c7bb');
   }
 
   portraitContext.strokeStyle = rgbToString(speaker.accent, 0.38);
