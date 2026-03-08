@@ -1,4 +1,4 @@
-const CACHE_NAME = 'falldown-neon-v4';
+const CACHE_NAME = 'falldown-neon-v5';
 const APP_ASSETS = [
   './',
   './index.html',

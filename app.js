@@ -1286,7 +1286,7 @@ function createCoreBossFloor(y, rowIndex) {
     thickness: FLOOR_THICKNESS + 2,
     gapX: gapCenter - gapWidth * 0.5,
     gapWidth,
-    glow: rowIndex % 2 === 0 ? 96 : 56,
+    glow: rowIndex % 2,
     kind: 'core',
   };
 }
@@ -1639,7 +1639,8 @@ function beginCoreBossPhase() {
   setStatus('Living Core');
   setSummary('The living core is active. Its chamber is rejecting you with deliberate defense patterns.');
   pauseButton.disabled = false;
-  startButton.textContent = 'Abort?';
+  startButton.textContent = 'Pause / Resume';
+  updateSoundtrackMix();
 }
 
 function beginSprintPhase() {
@@ -1654,6 +1655,7 @@ function beginSprintPhase() {
   game.trail = [];
   setStatus('Ignition Sprint');
   setSummary('The chamber is breaking apart. Reach the ignition node before the synchronization window collapses.');
+  updateSoundtrackMix();
 }
 
 function beginActivationSequence() {
@@ -1666,6 +1668,7 @@ function beginActivationSequence() {
   game.ball.vy = 0;
   setStatus('Core Ignition');
   setSummary('Synchronization accepted. The living core is rebooting through Jett’s ignition link.');
+  updateSoundtrackMix();
 }
 
 function showEndingScreen(index) {
@@ -1680,6 +1683,9 @@ function showEndingScreen(index) {
   endgame.phase = 'ending';
   game.running = false;
   game.paused = false;
+  pauseButton.disabled = true;
+  pauseButton.textContent = 'Pause';
+  startButton.textContent = index === ENDING_SCREENS.length - 1 ? 'Return To Title' : 'Continue';
 
   if (screen.type === 'dialogue') {
     const activeSpeaker = screen.lines[screen.lines.length - 1].speaker;
@@ -1694,6 +1700,8 @@ function showEndingScreen(index) {
   } else {
     setStatus('Victory');
   }
+
+  updateSoundtrackMix();
 }
 
 function beginEndingSequence() {
@@ -1877,6 +1885,7 @@ function updateActivationSequence(deltaTime) {
 
 function resetGame() {
   const config = getDifficultyConfig();
+  resetEndgameState();
   game.started = false;
   game.running = false;
   game.paused = false;
@@ -1907,6 +1916,7 @@ function startGame(forceReset = false) {
   }
 
   if (forceReset || game.gameOver || !game.started) {
+    resetEndgameState();
     game.score = 0;
     game.level = 1;
     game.scrollSpeed = config.baseScrollSpeed;
@@ -2040,7 +2050,10 @@ function recycleFloors() {
 
   game.floors.forEach((floor) => {
     if (floor.y + floor.thickness < -24) {
-      Object.assign(floor, createFloor(nextSpawnY, game.level + recycledCount));
+      const nextFloor = endgame.phase === 'boss'
+        ? createCoreBossFloor(nextSpawnY, endgame.nextBossRowIndex++)
+        : createFloor(nextSpawnY, game.level + recycledCount);
+      Object.assign(floor, nextFloor);
       nextSpawnY += FLOOR_SPACING;
       recycledCount += 1;
     }
@@ -2048,6 +2061,11 @@ function recycleFloors() {
 }
 
 function updateDifficulty() {
+  if (endgame.phase !== 'none') {
+    game.level = Math.max(game.level, ENDGAME_TRIGGER_LEVEL);
+    return;
+  }
+
   const config = getDifficultyConfig();
   game.level = Math.floor(game.score / 160) + 1;
   const post25Levels = Math.max(0, game.level - 25);
@@ -2102,72 +2120,26 @@ function resolveFloorCollisions(previousY, scrollStep) {
 
 function updateGame(deltaTime) {
   updateDifficulty();
-  const estimatedTravel =
-    game.scrollSpeed * deltaTime +
-    Math.abs(game.ball.vy) * deltaTime +
-    0.5 * GRAVITY * deltaTime * deltaTime;
-  const substeps = clamp(
-    Math.ceil(estimatedTravel / MAX_PHYSICS_TRAVEL_PER_STEP),
-    1,
-    MAX_PHYSICS_SUBSTEPS
-  );
-  const stepDelta = deltaTime / substeps;
-
-  for (let step = 0; step < substeps; step += 1) {
-    const scrollStep = game.scrollSpeed * stepDelta;
-
-    game.floors.forEach((floor) => {
-      floor.y -= scrollStep;
-    });
-
-    recycleFloors();
-    updateInputAxis(stepDelta);
-
-    game.ball.vy += GRAVITY * stepDelta;
-    const previousY = game.ball.y;
-
-    game.ball.x += game.ball.vx * stepDelta;
-    game.ball.y += game.ball.vy * stepDelta;
-
-    game.ball.x = clamp(game.ball.x, BALL_RADIUS, GAME_WIDTH - BALL_RADIUS);
-    resolveFloorCollisions(previousY, scrollStep);
-
-    const rescueLine = GAME_HEIGHT - FLOOR_SPACING * 1.18;
-    const visibleLine = GAME_HEIGHT - BALL_RADIUS * 1.35;
-    const rescueOverflow = Math.max(0, game.ball.y - rescueLine);
-
-    if (rescueOverflow > 0) {
-      const targetCatchUpSpeed = rescueOverflow * 10 + game.scrollSpeed * 0.55;
-      const catchUpBlend = 1 - Math.exp(-8 * stepDelta);
-      const minimumVisibleShift = Math.max(0, game.ball.y - visibleLine);
-
-      game.catchUpSpeed = lerp(game.catchUpSpeed, targetCatchUpSpeed, catchUpBlend);
-
-      shiftWorldUp(
-        Math.max(
-          minimumVisibleShift,
-          Math.min(rescueOverflow, game.catchUpSpeed * stepDelta)
-        )
-      );
-      recycleFloors();
-    } else if (game.catchUpSpeed > 0.1) {
-      game.catchUpSpeed *= Math.exp(-10 * stepDelta);
-    }
-
-    if (game.ball.y - BALL_RADIUS <= 0) {
-      endGame('You were pinned against the ceiling by the rising grid.');
-      break;
-    }
+  if (endgame.phase === 'none' && game.level >= ENDGAME_TRIGGER_LEVEL) {
+    beginCoreBossPhase();
   }
 
-  updateTrail();
-
-  if (game.gameOver) {
+  if (endgame.phase === 'boss') {
+    updateCoreBossPhase(deltaTime);
     return;
   }
 
-  game.elapsed += deltaTime;
-  game.score += deltaTime * getDifficultyConfig().scoreRate;
+  if (endgame.phase === 'sprint') {
+    updateSprintPhase(deltaTime);
+    return;
+  }
+
+  if (endgame.phase === 'activation') {
+    updateActivationSequence(deltaTime);
+    return;
+  }
+
+  runVerticalPhysics(deltaTime, getDifficultyConfig().scoreRate);
 }
 
 function drawChevronStrip(x, y, width, height, color, alpha, reverse = false) {
@@ -2558,8 +2530,8 @@ function drawAtmosphere(theme, time) {
   context.restore();
 }
 
-function drawBackground() {
-  const theme = getWorldTheme();
+function drawBackground(themeOverride = null) {
+  const theme = themeOverride || getWorldTheme();
   const time = game.elapsed + performance.now() * 0.0002;
   const shakeAmount = theme.instability * (0.35 + smoothstep(0, 1, theme.zoneWeights.core) * 1.6);
 
@@ -2577,6 +2549,111 @@ function drawBackground() {
   drawAtmosphere(theme, time);
 
   context.restore();
+}
+
+function drawSprintTrack() {
+  const theme = getWorldThemeForDepth(6);
+  const trackTop = SPRINT_TRACK_Y;
+  const nodePulse = 0.55 + Math.sin(game.elapsed * 7) * 0.18;
+
+  context.fillStyle = 'rgba(8, 10, 18, 0.88)';
+  context.fillRect(0, trackTop, GAME_WIDTH, GAME_HEIGHT - trackTop);
+
+  context.strokeStyle = rgbToString(theme.glowColor, 0.22);
+  context.lineWidth = 2;
+  context.beginPath();
+  context.moveTo(0, trackTop);
+  context.lineTo(GAME_WIDTH, trackTop);
+  context.stroke();
+
+  for (let x = 14; x < GAME_WIDTH; x += 34) {
+    drawChevronStrip(x, trackTop + 10, 18, 10, theme.alertColor, 0.12);
+  }
+
+  context.strokeStyle = rgbToString(theme.accentColor, 0.34 + nodePulse * 0.25);
+  context.lineWidth = 2.5;
+  context.strokeRect(SPRINT_NODE_X - 18, trackTop - 28, 28, 28);
+  context.fillStyle = rgbToString([255, 255, 255], 0.18 + nodePulse * 0.18);
+  context.fillRect(SPRINT_NODE_X - 14, trackTop - 24, 20, 20);
+
+  endgame.sprintHazards.forEach((hazard) => {
+    if (hazard.type === 'debris') {
+      context.save();
+      context.shadowBlur = 14;
+      context.shadowColor = '#ff9a45';
+      context.fillStyle = 'rgba(255, 154, 69, 0.86)';
+      context.fillRect(
+        hazard.x - hazard.width * 0.5,
+        hazard.y,
+        hazard.width,
+        hazard.height
+      );
+      context.restore();
+    } else {
+      if (!hazard.active) {
+        context.fillStyle = 'rgba(255, 108, 108, 0.24)';
+        context.fillRect(hazard.x - hazard.width * 0.5, 0, hazard.width, GAME_HEIGHT);
+      } else {
+        context.save();
+        context.shadowBlur = 20;
+        context.shadowColor = '#89fbff';
+        context.fillStyle = 'rgba(137, 251, 255, 0.78)';
+        context.fillRect(hazard.x - hazard.width * 0.5, 0, hazard.width, GAME_HEIGHT);
+        context.restore();
+      }
+    }
+  });
+
+  context.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  context.font = '700 11px "Eurostile", "Trebuchet MS", sans-serif';
+  context.fillText(`Ignition ${Math.max(0, Math.ceil(endgame.sprintTimer))}`, 16, 22);
+}
+
+function drawActivationScene() {
+  const theme = getWorldThemeForDepth(6);
+  const pulse = smoothstep(0, 1, Math.min(1, endgame.activationTimer / CORE_ACTIVATION_DURATION));
+
+  drawBackground(theme);
+  drawSprintTrack();
+  drawBall();
+
+  const coreBurst = context.createRadialGradient(
+    SPRINT_NODE_X - 4,
+    SPRINT_TRACK_Y - 18,
+    8,
+    SPRINT_NODE_X - 4,
+    SPRINT_TRACK_Y - 18,
+    190
+  );
+  coreBurst.addColorStop(0, `rgba(255,255,255,${0.48 + pulse * 0.42})`);
+  coreBurst.addColorStop(0.2, `rgba(138,245,255,${0.24 + pulse * 0.28})`);
+  coreBurst.addColorStop(0.55, `rgba(104,190,255,${0.08 + pulse * 0.16})`);
+  coreBurst.addColorStop(1, 'rgba(104,190,255,0)');
+  context.fillStyle = coreBurst;
+  context.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+}
+
+function drawEndingBackdrop() {
+  const baseDepth = endgame.endingIndex === 0 ? 6 : endgame.endingIndex === 3 ? 0.4 : 5.5;
+  const theme = getWorldThemeForDepth(baseDepth);
+  drawBackground(theme);
+
+  if (endgame.endingIndex === 0 || endgame.endingIndex === 1) {
+    const relight = context.createLinearGradient(0, 0, 0, GAME_HEIGHT);
+    relight.addColorStop(0, 'rgba(130, 230, 255, 0.08)');
+    relight.addColorStop(1, 'rgba(255, 255, 255, 0.18)');
+    context.fillStyle = relight;
+    context.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+  }
+
+  if (endgame.endingIndex === 2) {
+    context.save();
+    context.fillStyle = 'rgba(255, 214, 132, 0.16)';
+    context.beginPath();
+    context.arc(GAME_WIDTH * 0.5, GAME_HEIGHT * 0.42, 96, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
+  }
 }
 
 function drawTitleScene() {
@@ -2718,7 +2795,9 @@ function drawFloors() {
     const leftWidth = floor.gapX;
     const rightX = floor.gapX + floor.gapWidth;
     const rightWidth = GAME_WIDTH - rightX;
-    const fill = floor.glow === 0 ? '#59f3ff' : '#ff4edd';
+    const fill = floor.kind === 'core'
+      ? (floor.glow % 2 === 0 ? '#9cfaff' : '#ffe68a')
+      : (floor.glow === 0 ? '#59f3ff' : '#ff4edd');
 
     context.save();
     context.shadowBlur = 16;
@@ -2862,6 +2941,22 @@ function drawFrame() {
     drawDialogueScene();
   } else if (intro.mode === 'launch') {
     drawLaunchScene();
+  } else if (endgame.phase === 'boss') {
+    drawBackground(getWorldThemeForDepth(5.8));
+    drawFloors();
+    drawBall();
+    context.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    context.font = '700 11px "Eurostile", "Trebuchet MS", sans-serif';
+    context.fillText(`Core ${Math.max(0, Math.ceil(CORE_BOSS_DURATION - endgame.bossTimer))}`, 16, 22);
+    context.fillText('Living Core', GAME_WIDTH - 86, 22);
+  } else if (endgame.phase === 'sprint') {
+    drawBackground(getWorldThemeForDepth(6));
+    drawSprintTrack();
+    drawBall();
+  } else if (endgame.phase === 'activation') {
+    drawActivationScene();
+  } else if (endgame.phase === 'ending') {
+    drawEndingBackdrop();
   } else {
     drawBackground();
     drawFloors();
@@ -2902,12 +2997,17 @@ function updateDirectionalInput(direction, isActive) {
 }
 
 function handlePrimaryAction() {
+  if (endgame.phase === 'ending') {
+    advanceEndingSequence();
+    return;
+  }
+
   if (intro.mode === 'title' || intro.mode === 'dialogue') {
     advanceIntroSequence();
     return;
   }
 
-  if (intro.mode === 'launch') {
+  if (intro.mode === 'launch' || endgame.phase === 'activation') {
     return;
   }
 
@@ -2944,7 +3044,7 @@ function handleKeyState(event, isActive) {
   }
 
   if (isActive && key === 'p') {
-    if (intro.mode === 'none' && (game.running || game.paused)) {
+    if (intro.mode === 'none' && endgame.phase !== 'ending' && (game.running || game.paused)) {
       pauseGame();
     }
   }
@@ -2986,7 +3086,7 @@ function applyDifficultyChange(nextDifficulty) {
   const config = getDifficultyConfig();
   game.scrollSpeed = config.baseScrollSpeed;
   updateHud();
-  setSummary(`The grid is idle. ${config.label} mode is armed. Start a run to initialize the lane generator.`);
+  setSummary(`Drop corridor is idle. ${config.label} mode is armed. Start the mission to enter VX-99.`);
 }
 
 window.addEventListener('keydown', (event) => handleKeyState(event, true));
@@ -2995,7 +3095,7 @@ window.addEventListener('blur', () => {
   updateDirectionalInput('left', false);
   updateDirectionalInput('right', false);
 
-  if (game.running) {
+  if (game.running && endgame.phase !== 'activation') {
     pauseGame();
   }
 });
