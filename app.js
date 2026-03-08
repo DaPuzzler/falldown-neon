@@ -26,7 +26,7 @@ const MAX_HORIZONTAL_SPEED = 235;
 const GRAVITY = 1180;
 const MAX_PHYSICS_TRAVEL_PER_STEP = 12;
 const MAX_PHYSICS_SUBSTEPS = 6;
-const SCORE_PER_LEVEL = 3600;
+const SCORE_PER_LEVEL = 1200;
 const NORMAL_DESCENT_LEVELS = 7;
 const ENDGAME_TRIGGER_LEVEL = NORMAL_DESCENT_LEVELS + 1;
 const CORE_BOSS_DURATION = 28;
@@ -97,6 +97,7 @@ const game = {
   floors: [],
   trail: [],
   lastGapCenter: GAME_WIDTH * 0.5,
+  floorSequence: 0,
 };
 
 const intro = {
@@ -1654,16 +1655,16 @@ function createFloor(y, difficultyIndex) {
   const maxCenter = GAME_WIDTH - margin - gapWidth * 0.5;
   const depthProgress = getRunDepthProgress();
   const lateSpread = smoothstep(0.73, 1, depthProgress);
-  const phase = difficultyIndex * (0.98 + lateSpread * 0.16) + depthProgress * 11.5 + game.elapsed * 0.12;
+  const phase = difficultyIndex * (1.24 + lateSpread * 0.22) + depthProgress * 13.5 + game.elapsed * 0.18;
   const wave =
-    Math.sin(phase) * 0.34 +
-    Math.sin(phase * 1.78 + 1.15) * 0.21 +
-    Math.sin(phase * 2.46 + 0.4) * 0.1;
+    Math.sin(phase) * 0.38 +
+    Math.sin(phase * 1.86 + 1.15) * 0.24 +
+    Math.sin(phase * 2.68 + 0.4) * 0.12;
   const normalizedWave = clamp(0.5 + wave, 0.05, 0.95);
   const targetCenter = lerp(minCenter, maxCenter, normalizedWave);
   const previousCenter = Number.isFinite(game.lastGapCenter) ? game.lastGapCenter : GAME_WIDTH * 0.5;
-  const minShift = lerp(18, 26, 1 - depthProgress * 0.35);
-  const maxShift = lerp(84, 122, depthProgress);
+  const minShift = lerp(30, 24, depthProgress);
+  const maxShift = lerp(96, 132, depthProgress);
   const fallbackDirection = difficultyIndex % 2 === 0 ? 1 : -1;
   const signedShift = targetCenter - previousCenter;
   let nextCenter = clamp(targetCenter, previousCenter - maxShift, previousCenter + maxShift);
@@ -1774,6 +1775,7 @@ function resetFloors() {
 
   if (endgame.phase !== 'boss') {
     game.lastGapCenter = GAME_WIDTH * 0.5;
+    game.floorSequence = 0;
   }
 
   for (let index = 0; index < FLOOR_COUNT; index += 1) {
@@ -1782,7 +1784,8 @@ function resetFloors() {
       game.floors.push(createCoreBossFloor(y, endgame.nextBossRowIndex));
       endgame.nextBossRowIndex += 1;
     } else {
-      game.floors.push(createFloor(y, index));
+      game.floors.push(createFloor(y, game.floorSequence));
+      game.floorSequence += 1;
     }
   }
 }
@@ -2558,12 +2561,15 @@ function runVerticalPhysics(deltaTime, scoreRate) {
     game.ball.x = clamp(game.ball.x, BALL_RADIUS, GAME_WIDTH - BALL_RADIUS);
     resolveFloorCollisions(previousY, scrollStep);
 
-    const rescueLine = GAME_HEIGHT - FLOOR_SPACING * 1.18;
-    const visibleLine = GAME_HEIGHT - BALL_RADIUS * 1.35;
+    const rescueLine = GAME_HEIGHT - FLOOR_SPACING * 0.72;
+    const visibleLine = GAME_HEIGHT - BALL_RADIUS - 3;
     const rescueOverflow = Math.max(0, game.ball.y - rescueLine);
 
     if (rescueOverflow > 0) {
-      const targetCatchUpSpeed = rescueOverflow * 10 + game.scrollSpeed * 0.55;
+      const targetCatchUpSpeed =
+        rescueOverflow * 18 +
+        Math.max(0, game.ball.vy * 0.72) +
+        game.scrollSpeed * 0.72;
       const catchUpBlend = 1 - Math.exp(-8 * stepDelta);
       const minimumVisibleShift = Math.max(0, game.ball.y - visibleLine);
       const catchUpShift = Math.max(
@@ -2573,7 +2579,9 @@ function runVerticalPhysics(deltaTime, scoreRate) {
 
       game.catchUpSpeed = lerp(game.catchUpSpeed, targetCatchUpSpeed, catchUpBlend);
       shiftWorldUp(catchUpShift, false);
-      game.ball.y = Math.min(game.ball.y, visibleLine);
+      if (game.ball.y > visibleLine) {
+        game.ball.y = visibleLine;
+      }
       recycleFloors();
     } else if (game.catchUpSpeed > 0.1) {
       game.catchUpSpeed *= Math.exp(-10 * stepDelta);
@@ -2872,16 +2880,14 @@ function updateInputAxis(deltaTime) {
 
 function recycleFloors() {
   let nextSpawnY = Math.max(...game.floors.map((floor) => floor.y)) + FLOOR_SPACING;
-  let recycledCount = 0;
 
   game.floors.forEach((floor) => {
     if (floor.y + floor.thickness < -24) {
       const nextFloor = endgame.phase === 'boss'
         ? createCoreBossFloor(nextSpawnY, endgame.nextBossRowIndex++)
-        : createFloor(nextSpawnY, game.level + recycledCount);
+        : createFloor(nextSpawnY, game.floorSequence++);
       Object.assign(floor, nextFloor);
       nextSpawnY += FLOOR_SPACING;
-      recycledCount += 1;
     }
   });
 }
