@@ -37,6 +37,11 @@
           </div>
         </div>
 
+        <div class="touch-controls" aria-label="Touch controls">
+          <button class="touch-button" data-dir="left" type="button" aria-label="Move left">◀</button>
+          <button class="touch-button" data-dir="right" type="button" aria-label="Move right">▶</button>
+        </div>
+
         <div class="hud">
           <article class="stat-card">
             <span class="stat-label">Score</span>
@@ -60,11 +65,7 @@
           <button id="start-button" class="action action-primary" type="button">Start Run</button>
           <button id="pause-button" class="action" type="button" disabled>Pause</button>
           <button id="music-button" class="action action-secondary" type="button" aria-pressed="true">Music On</button>
-        </div>
-
-        <div class="touch-controls" aria-label="Touch controls">
-          <button class="touch-button" data-dir="left" type="button" aria-label="Move left">◀</button>
-          <button class="touch-button" data-dir="right" type="button" aria-label="Move right">▶</button>
+          <button id="immersive-button" class="action" type="button" aria-pressed="false">Maximize</button>
         </div>
       </div>
 
@@ -77,7 +78,7 @@
         <section class="panel">
           <h2>Controls</h2>
           <p><kbd>←</kbd> <kbd>→</kbd> or <kbd>A</kbd> <kbd>D</kbd> to drift.</p>
-          <p><kbd>P</kbd> pauses. <kbd>M</kbd> toggles music. Touch buttons handle mobile play.</p>
+          <p><kbd>Space</kbd> or <kbd>P</kbd> pauses. <kbd>M</kbd> toggles music. Touch buttons handle mobile play.</p>
         </section>
 
         <section class="panel">
@@ -95,9 +96,9 @@
           <label class="setting" for="volume-slider">
             <span class="setting-row">
               <span class="setting-label">Music Volume</span>
-              <strong id="volume-value">90%</strong>
+              <strong id="volume-value">50%</strong>
             </span>
-            <input id="volume-slider" type="range" min="0" max="100" step="1" value="90">
+            <input id="volume-slider" type="range" min="0" max="100" step="1" value="50">
           </label>
         </section>
 

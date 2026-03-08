@@ -40,11 +40,13 @@ const runSummary = document.getElementById('run-summary');
 const startButton = document.getElementById('start-button');
 const pauseButton = document.getElementById('pause-button');
 const musicButton = document.getElementById('music-button');
+const immersiveButton = document.getElementById('immersive-button');
 const difficultySelect = document.getElementById('difficulty-select');
 const volumeSlider = document.getElementById('volume-slider');
 const volumeValue = document.getElementById('volume-value');
 const touchButtons = Array.from(document.querySelectorAll('.touch-button'));
 const gameFrame = document.querySelector('.game-frame');
+const screenPanel = document.querySelector('.screen-panel');
 
 const inputState = {
   left: false,
@@ -298,7 +300,7 @@ function loadMusicEnabled() {
 function loadMusicVolume() {
   const saved = Number(localStorage.getItem(MUSIC_VOLUME_STORAGE_KEY));
   if (!Number.isFinite(saved)) {
-    return 0.9;
+    return 0.5;
   }
 
   return clamp(saved, 0, 1);
@@ -322,7 +324,7 @@ function saveMusicEnabled(enabled) {
 }
 
 function saveBestScore(score) {
-  localStorage.setItem(STORAGE_KEY, String(Math.round(score)));
+  localStorage.setItem(STORAGE_KEY, String(Math.ceil(score)));
 }
 
 function clamp(value, min, max) {
@@ -384,6 +386,12 @@ function resetSoundtrackSequence() {
 function setMusicButtonState() {
   musicButton.textContent = soundtrack.enabled ? 'Music On' : 'Music Off';
   musicButton.setAttribute('aria-pressed', String(soundtrack.enabled));
+}
+
+function setImmersiveButtonState() {
+  const isFullscreen = document.fullscreenElement === screenPanel;
+  immersiveButton.textContent = isFullscreen ? 'Minimize' : 'Maximize';
+  immersiveButton.setAttribute('aria-pressed', String(isFullscreen));
 }
 
 function setDifficultyControlState() {
@@ -785,6 +793,10 @@ function updateSoundtrackMix() {
 }
 
 async function activateSoundtrack() {
+  if (!soundtrack.enabled) {
+    return;
+  }
+
   const audioContext = ensureSoundtrack();
 
   if (!audioContext) {
@@ -796,6 +808,22 @@ async function activateSoundtrack() {
   }
 
   updateSoundtrackMix();
+}
+
+async function toggleImmersiveMode() {
+  if (!document.fullscreenEnabled) {
+    return;
+  }
+
+  try {
+    if (document.fullscreenElement === screenPanel) {
+      await document.exitFullscreen();
+    } else {
+      await screenPanel.requestFullscreen();
+    }
+  } catch (error) {
+    console.error('Fullscreen toggle failed', error);
+  }
 }
 
 function toggleMusicEnabled() {
@@ -974,15 +1002,17 @@ function endGame(reason) {
   game.paused = false;
   game.gameOver = true;
 
-  if (game.score > game.best) {
-    game.best = game.score;
+  const finalScore = Math.ceil(game.score);
+
+  if (finalScore > game.best) {
+    game.best = finalScore;
     saveBestScore(game.best);
   }
 
   updateHud();
   setStatus('Terminated');
-  setSummary(`Run ended at ${Math.round(game.score)} points. ${reason}`);
-  showOverlay('Run Lost', `Score ${Math.round(game.score)}`, reason);
+  setSummary(`Run ended at ${finalScore} points. ${reason}`);
+  showOverlay('Run Lost', `Score ${finalScore}`, reason);
   pauseButton.disabled = true;
   pauseButton.textContent = 'Pause';
   playGameOverSound();
@@ -1010,7 +1040,7 @@ function hideOverlay() {
 
 function updateHud() {
   const config = getDifficultyConfig();
-  scoreValue.textContent = String(Math.round(game.score));
+  scoreValue.textContent = String(Math.ceil(game.score));
   bestValue.textContent = String(game.best);
   levelValue.textContent = String(game.level);
   speedValue.textContent = `${(game.scrollSpeed / config.baseScrollSpeed).toFixed(1)}x`;
@@ -1271,7 +1301,7 @@ function drawFrame() {
 
   context.fillStyle = 'rgba(255, 255, 255, 0.9)';
   context.font = '700 11px "Eurostile", "Trebuchet MS", sans-serif';
-  context.fillText(`Score ${Math.round(game.score)}`, 16, 22);
+  context.fillText(`Score ${Math.ceil(game.score)}`, 16, 22);
   context.fillText(`Level ${game.level}`, GAME_WIDTH - 74, 22);
 }
 
@@ -1324,7 +1354,11 @@ function handleKeyState(event, isActive) {
   }
 
   if (isActive && (event.code === 'Space' || key === ' ')) {
-    pauseGame();
+    if (!game.started || game.gameOver) {
+      startGame(true);
+    } else {
+      pauseGame();
+    }
     event.preventDefault();
   }
 
@@ -1409,20 +1443,34 @@ pauseButton.addEventListener('click', pauseGame);
 musicButton.addEventListener('click', () => {
   toggleMusicEnabled();
 });
+immersiveButton.addEventListener('click', () => {
+  toggleImmersiveMode();
+});
 difficultySelect.addEventListener('change', (event) => {
   applyDifficultyChange(event.target.value);
 });
 volumeSlider.addEventListener('input', (event) => {
   setMusicVolume(Number(event.target.value) / 100);
 });
+document.addEventListener('fullscreenchange', setImmersiveButtonState);
+document.addEventListener('pointerdown', () => {
+  activateSoundtrack().catch((error) => {
+    console.error('Audio activation failed', error);
+  });
+}, { once: true, passive: true });
 window.addEventListener('resize', setCanvasResolution);
 
 setCanvasResolution();
 setMusicButtonState();
+setImmersiveButtonState();
 setDifficultyControlState();
 setVolumeControlState();
 resetGame();
 requestAnimationFrame(frame);
+
+activateSoundtrack().catch(() => {
+  // Browsers may block autoplay until first interaction.
+});
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
