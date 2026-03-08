@@ -81,6 +81,10 @@ button,
 }
 
 .marquee {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: center;
   margin-bottom: 1.5rem;
   padding: 1.2rem 1.4rem;
   border: 1px solid rgba(89, 243, 255, 0.2);
@@ -89,6 +93,30 @@ button,
     linear-gradient(135deg, rgba(8, 16, 35, 0.92), rgba(3, 8, 20, 0.88)),
     rgba(255, 255, 255, 0.02);
   box-shadow: var(--shadow);
+}
+
+.marquee-copy {
+  min-width: 0;
+}
+
+.marquee-art {
+  background-image:
+    linear-gradient(180deg, rgba(5, 8, 18, 0.04), rgba(5, 8, 18, 0.22)),
+    url("core%20drop%20cover%20art.png");
+  background-size: cover;
+  background-position: center top;
+  background-repeat: no-repeat;
+}
+
+.marquee-art {
+  width: 100%;
+  aspect-ratio: 1024 / 1536;
+  border-radius: 20px;
+  border: 1px solid rgba(89, 243, 255, 0.18);
+  background-size: contain;
+  background-color: rgba(3, 8, 20, 0.78);
+  background-position: center;
+  box-shadow: 0 0 28px rgba(89, 243, 255, 0.12), inset 0 0 28px rgba(255, 255, 255, 0.03);
 }
 
 .kicker,
@@ -266,13 +294,6 @@ body.immersive-mode .game-frame {
 
 .overlay[data-mode="title"] .overlay-generic {
   max-width: 32rem;
-}
-
-.overlay[data-mode="title"] .overlay-title {
-  font-size: clamp(2.7rem, 9vw, 4.6rem);
-  letter-spacing: 0.16em;
-  text-indent: 0.16em;
-  text-shadow: 0 0 22px rgba(89, 243, 255, 0.4), 0 0 34px rgba(255, 78, 221, 0.18);
 }
 
 .overlay[data-mode="dialogue"] {
@@ -469,6 +490,8 @@ body.immersive-mode .game-frame {
 .touch-button {
   appearance: none;
   -webkit-appearance: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
   border: 1px solid rgba(89, 243, 255, 0.28);
   border-radius: 999px;
   background: linear-gradient(180deg, rgba(4, 12, 26, 0.95), rgba(5, 9, 18, 0.8));
@@ -534,15 +557,31 @@ body.immersive-mode .game-frame {
 }
 
 .touch-button {
-  min-height: 4.25rem;
+  min-height: 4.9rem;
+  padding: 0 1.2rem;
   font-family: var(--font-display);
   font-size: 1.55rem;
+  box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.03);
 }
 
 .touch-button.is-active {
   border-color: rgba(255, 204, 92, 0.72);
   color: var(--amber);
-  box-shadow: 0 0 18px rgba(255, 204, 92, 0.18);
+  box-shadow: 0 0 28px rgba(255, 204, 92, 0.34), inset 0 0 18px rgba(255, 204, 92, 0.18);
+  animation: touchHeldGlow 0.9s ease-in-out infinite;
+}
+
+@keyframes touchHeldGlow {
+  0%,
+  100% {
+    transform: translateY(0);
+    box-shadow: 0 0 22px rgba(255, 204, 92, 0.24), inset 0 0 12px rgba(255, 204, 92, 0.14);
+  }
+
+  50% {
+    transform: translateY(-1px);
+    box-shadow: 0 0 34px rgba(255, 204, 92, 0.42), inset 0 0 18px rgba(255, 204, 92, 0.2);
+  }
 }
 
 .telemetry {
@@ -664,6 +703,15 @@ kbd {
 }
 
 @media (max-width: 640px) {
+  .marquee {
+    grid-template-columns: 1fr;
+  }
+
+  .marquee-art {
+    max-width: min(100%, 17rem);
+    margin: 0 auto;
+  }
+
   .cabinet {
     width: min(100%, calc(100% - 1rem));
     padding-top: 0.75rem;
@@ -689,7 +737,8 @@ kbd {
   }
 
   .touch-button {
-    min-height: 4.9rem;
+    min-height: 5.4rem;
+    font-size: 1.7rem;
   }
 
   .dialogue-panel {
@@ -718,7 +767,7 @@ kbd {
   }
 
   body.immersive-mode .touch-button {
-    min-height: 5.15rem;
+    min-height: 5.8rem;
   }
 }
 

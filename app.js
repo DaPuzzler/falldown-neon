@@ -26,14 +26,18 @@ const MAX_HORIZONTAL_SPEED = 235;
 const GRAVITY = 1180;
 const MAX_PHYSICS_TRAVEL_PER_STEP = 12;
 const MAX_PHYSICS_SUBSTEPS = 6;
-const ENDGAME_TRIGGER_LEVEL = 72;
+const SCORE_PER_LEVEL = 800;
+const NORMAL_DESCENT_LEVELS = 56;
+const ENDGAME_TRIGGER_LEVEL = NORMAL_DESCENT_LEVELS + 1;
 const CORE_BOSS_DURATION = 28;
+const CORE_LANDING_DURATION = 1.9;
 const CORE_SPRINT_DURATION = 12;
 const CORE_ACTIVATION_DURATION = 4.8;
 const SPRINT_TRACK_Y = GAME_HEIGHT - 108;
-const SPRINT_NODE_X = GAME_WIDTH - 44;
+const SPRINT_NODE_X = GAME_WIDTH - 28;
 const SPRINT_HAZARD_INTERVAL = 0.88;
-const DEBUG_ENDGAME_SCORE = (ENDGAME_TRIGGER_LEVEL - 1) * 160;
+const DEBUG_ENDGAME_SCORE = (ENDGAME_TRIGGER_LEVEL - 1) * SCORE_PER_LEVEL;
+const WORLD_ZONE_THRESHOLDS = [0, 0.12, 0.25, 0.4, 0.58, 0.73, 0.88, 1];
 
 const canvas = document.getElementById('game-canvas');
 const context = canvas.getContext('2d');
@@ -109,15 +113,39 @@ const endgame = {
   phase: 'none',
   bossTimer: 0,
   nextBossRowIndex: 0,
+  lastBossCenter: 0,
+  landingTimer: 0,
+  landingStartX: 0,
+  briefingIndex: 0,
+  briefingVisibleText: '',
+  briefingTyping: false,
+  briefingReady: false,
+  briefingNextCharTime: 0,
+  briefingActiveSpeaker: 'command',
+  endingVisibleText: '',
+  endingTyping: false,
+  endingReady: false,
+  endingNextCharTime: 0,
   sprintTimer: 0,
+  sprintDuration: CORE_SPRINT_DURATION,
   sprintHazardTimer: 0,
   sprintHazards: [],
   activationTimer: 0,
+  completionTime: 0,
   endingIndex: 0,
 };
 
 const runtimeState = {
   fatalError: '',
+};
+
+const presentation = {
+  cueTitle: '',
+  cueSubtitle: '',
+  cueTimer: 0,
+  flashAlpha: 0,
+  currentZoneLabel: '',
+  lastFrameTimestamp: 0,
 };
 
 const debugState = {
@@ -153,6 +181,15 @@ const DIFFICULTY_LEVELS = {
     scoreRate: 42,
     moveAcceleration: 1340,
     maxHorizontalSpeed: 248,
+    bossBaseScrollSpeed: 168,
+    bossWaveAmplitude: 7,
+    bossGapBonus: 14,
+    bossGateTighten: 6,
+    bossMaxCenterShift: 44,
+    sprintDuration: 14,
+    sprintHazardIntervalScale: 1.18,
+    strikeTelegraphBonus: 0.18,
+    debrisSpeedScale: 0.88,
   },
   normal: {
     label: 'Normal',
@@ -165,6 +202,15 @@ const DIFFICULTY_LEVELS = {
     scoreRate: 50,
     moveAcceleration: 1440,
     maxHorizontalSpeed: 266,
+    bossBaseScrollSpeed: 182,
+    bossWaveAmplitude: 8,
+    bossGapBonus: 8,
+    bossGateTighten: 10,
+    bossMaxCenterShift: 52,
+    sprintDuration: 13,
+    sprintHazardIntervalScale: 1,
+    strikeTelegraphBonus: 0.08,
+    debrisSpeedScale: 1,
   },
   hard: {
     label: 'Hard',
@@ -177,6 +223,15 @@ const DIFFICULTY_LEVELS = {
     scoreRate: 58,
     moveAcceleration: 1560,
     maxHorizontalSpeed: 286,
+    bossBaseScrollSpeed: 198,
+    bossWaveAmplitude: 9,
+    bossGapBonus: 2,
+    bossGateTighten: 14,
+    bossMaxCenterShift: 60,
+    sprintDuration: 12,
+    sprintHazardIntervalScale: 0.92,
+    strikeTelegraphBonus: 0,
+    debrisSpeedScale: 1.08,
   },
   impossible: {
     label: 'Impossible',
@@ -189,6 +244,15 @@ const DIFFICULTY_LEVELS = {
     scoreRate: 64,
     moveAcceleration: 1700,
     maxHorizontalSpeed: 308,
+    bossBaseScrollSpeed: 214,
+    bossWaveAmplitude: 10,
+    bossGapBonus: -4,
+    bossGateTighten: 18,
+    bossMaxCenterShift: 68,
+    sprintDuration: 11,
+    sprintHazardIntervalScale: 0.84,
+    strikeTelegraphBonus: -0.08,
+    debrisSpeedScale: 1.16,
   },
 };
 
@@ -337,8 +401,7 @@ const WORLD_BANDS = [
 
 const INTRO_SCREENS = [
   [
-    { speaker: 'command', text: 'VX-99 core is going critical.' },
-    { speaker: 'command', text: 'No one can get that deep.' },
+    { speaker: 'command', text: 'VX-99 core is going critical. No one can get that deep.' },
     { speaker: 'jett', text: 'Then send me.' },
   ],
   [
@@ -379,47 +442,60 @@ const DIALOGUE_LINE_PAUSE_MS = 260;
 const LAUNCH_DURATION_MS = 1650;
 
 const CORE_BOSS_PATTERNS = [
-  { center: 0.5, width: 84 },
-  { center: 0.5, width: 72 },
-  { center: 0.22, width: 74 },
-  { center: 0.78, width: 74 },
-  { center: 0.34, width: 68 },
-  { center: 0.66, width: 68 },
-  { center: 0.5, width: 62 },
-  { center: 0.18, width: 72 },
-  { center: 0.82, width: 72 },
-  { center: 0.42, width: 64 },
-  { center: 0.58, width: 64 },
-  { center: 0.5, width: 58 },
+  { center: 0.5, width: 76 },
+  { center: 0.38, width: 70 },
+  { center: 0.62, width: 68 },
+  { center: 0.3, width: 66 },
+  { center: 0.7, width: 64 },
+  { center: 0.46, width: 62 },
+  { center: 0.76, width: 60 },
+  { center: 0.34, width: 62 },
+  { center: 0.58, width: 60 },
+  { center: 0.24, width: 58 },
+  { center: 0.68, width: 58 },
+  { center: 0.5, width: 56 },
+];
+
+const CORE_SPRINT_BRIEFING = [
+  { speaker: 'command', text: 'Jett... I can’t believe you made it.' },
+  { speaker: 'jett', text: 'Took longer than I thought.' },
+  { speaker: 'command', text: 'The ignition node is straight ahead. Reach it before the chamber tears itself apart, and watch the debris and core discharges on your way in.' },
 ];
 
 const ENDING_SCREENS = [
   {
-    type: 'system',
-    label: 'SYSTEM',
-    title: 'CORE SYNCHRONIZED',
-    html: 'VX-99: STABLE',
-    prompt: 'PRESS START',
-  },
-  {
     type: 'dialogue',
     badge: 'Command Link',
     lines: [
-      { speaker: 'command', text: 'You did it, Jett.' },
-      { speaker: 'command', text: 'The whole planet’s lighting back up.' },
-      { speaker: 'jett', text: 'Yeah.' },
-      { speaker: 'jett', text: 'I noticed.' },
+      { speaker: 'command', text: 'VX-99 is stable. You saved millions.' },
     ],
     prompt: 'PRESS START',
   },
   {
     type: 'dialogue',
-    badge: 'Return Channel',
     lines: [
-      { speaker: 'her', text: 'You’re still a fool.' },
-      { speaker: 'jett', text: 'Maybe.' },
-      { speaker: 'jett', text: 'But I made it back.' },
+      { speaker: 'jett', text: 'Not bad for a one-way drop.' },
     ],
+    prompt: 'PRESS START',
+  },
+  {
+    type: 'dialogue',
+    lines: [
+      { speaker: 'command', text: 'I’d call that an understatement.' },
+    ],
+    prompt: 'PRESS START',
+  },
+  {
+    type: 'dialogue',
+    lines: [
+      { speaker: 'jett', text: 'Yeah. Me too.' },
+    ],
+    prompt: 'PRESS START',
+  },
+  {
+    type: 'stats',
+    label: 'MISSION REPORT',
+    title: 'CORE SYNCHRONIZED',
     prompt: 'PRESS START',
   },
   {
@@ -571,6 +647,28 @@ const TITLE_DRUMS = {
   hat: '..x.x.x...x.x.x.',
 };
 
+const VICTORY_BASS_PATTERNS = [
+  [0, null, 7, null, 12, null, 7, null, 0, null, 12, null, 7, null, 12, null],
+  [0, null, 5, null, 10, null, 7, null, 0, null, 7, null, 10, null, 12, null],
+];
+
+const VICTORY_ARP_PATTERN = [
+  0, 2, 1, 3, 2, 4, 3, 4, 1, 2, 3, 4, 2, 1, 3, 4,
+];
+
+const VICTORY_LEAD_PATTERNS = [
+  [12, null, 14, null, 17, null, 19, null, 17, null, 21, null, 19, null, 17, null],
+  [10, null, 12, null, 15, null, 17, null, 15, null, 19, null, 17, null, 15, null],
+  [12, null, 17, null, 19, null, 21, null, 24, null, 21, null, 19, null, 17, null],
+  [15, null, 19, null, 22, null, 24, null, 22, null, 19, null, 17, null, 15, null],
+];
+
+const VICTORY_DRUMS = {
+  kick: 'x..xx..xx..xx..x',
+  snare: '....x.......x...',
+  hat: 'x.xxxxxxxxxxxxxx',
+};
+
 function createBall() {
   return {
     x: GAME_WIDTH * 0.5,
@@ -597,6 +695,111 @@ function loadMusicVolume() {
   }
 
   return clamp(saved, 0, 1);
+}
+
+function formatDuration(seconds) {
+  const safeSeconds = Math.max(0, seconds);
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds - minutes * 60;
+  return `${String(minutes).padStart(2, '0')}:${remainingSeconds.toFixed(1).padStart(4, '0')}`;
+}
+
+function getRunDepthProgress(score = game.score) {
+  const totalScore = Math.max(SCORE_PER_LEVEL, (ENDGAME_TRIGGER_LEVEL - 1) * SCORE_PER_LEVEL);
+  return clamp(score / totalScore, 0, 1);
+}
+
+function getZoneIndexForProgress(progress) {
+  for (let index = 0; index < WORLD_ZONE_THRESHOLDS.length - 1; index += 1) {
+    if (progress < WORLD_ZONE_THRESHOLDS[index + 1]) {
+      return index;
+    }
+  }
+
+  return WORLD_ZONE_THRESHOLDS.length - 2;
+}
+
+function getBandDepthForProgress(progress) {
+  for (let index = 0; index < WORLD_ZONE_THRESHOLDS.length - 1; index += 1) {
+    const start = WORLD_ZONE_THRESHOLDS[index];
+    const end = WORLD_ZONE_THRESHOLDS[index + 1];
+
+    if (progress <= end || index === WORLD_ZONE_THRESHOLDS.length - 2) {
+      const localBlend = smoothstep(start, end, progress);
+      return Math.min(WORLD_BANDS.length - 1, index + localBlend);
+    }
+  }
+
+  return WORLD_BANDS.length - 1;
+}
+
+function getZoneLabel() {
+  if (endgame.phase === 'boss') {
+    return 'Living Core';
+  }
+
+  if (endgame.phase === 'landing') {
+    return 'Core Floor';
+  }
+
+  if (endgame.phase === 'briefing') {
+    return 'Ignition Staging';
+  }
+
+  if (endgame.phase === 'sprint') {
+    return 'Ignition Sprint';
+  }
+
+  if (endgame.phase === 'activation') {
+    return 'Core Synchronization';
+  }
+
+  if (endgame.phase === 'ending') {
+    return 'VX-99 Restored';
+  }
+
+  const labels = [
+    'Neon Undercity',
+    'Maintenance Shafts',
+    'Mining Ruins',
+    'Magma Veins',
+    'Alien Interface',
+    'Circuit Cathedral',
+    'Core Approach',
+  ];
+
+  return labels[getZoneIndexForProgress(getRunDepthProgress())];
+}
+
+function getObjectiveLabel() {
+  if (intro.mode === 'title') {
+    return 'Press Start';
+  }
+
+  if (intro.mode === 'dialogue') {
+    return 'Advance Transmission';
+  }
+
+  if (intro.mode === 'launch') {
+    return 'Board Gravity Racer';
+  }
+
+  switch (endgame.phase) {
+    case 'boss':
+      return 'Survive The Core';
+    case 'landing':
+      return 'Hold The Floor';
+    case 'briefing':
+      return 'Await Instructions';
+    case 'sprint':
+      return 'Reach Ignition Node';
+    case 'activation':
+      return 'Synchronizing Core';
+    case 'ending':
+      return 'Mission Complete';
+    default:
+      return 'Drop Through The Gaps';
+  }
 }
 
 function saveMusicVolume(volume) {
@@ -746,7 +949,7 @@ function getWorldThemeForDepth(rawDepth) {
 }
 
 function getWorldTheme() {
-  return getWorldThemeForDepth((game.level - 1) / 12);
+  return getWorldThemeForDepth(getBandDepthForProgress(getRunDepthProgress()));
 }
 
 function midiToFrequency(note) {
@@ -758,7 +961,31 @@ function getDifficultyConfig() {
 }
 
 function getMusicMode() {
-  return !game.started && !game.running && !game.gameOver ? 'title' : 'game';
+  if (endgame.phase === 'ending') {
+    return 'victory';
+  }
+
+  if (endgame.phase === 'activation') {
+    return 'core-sprint';
+  }
+
+  if (!game.started && !game.running && !game.gameOver) {
+    return 'title';
+  }
+
+  if (endgame.phase === 'boss') {
+    return 'core-boss';
+  }
+
+  if (endgame.phase === 'briefing') {
+    return 'core-boss';
+  }
+
+  if (endgame.phase === 'sprint') {
+    return 'core-sprint';
+  }
+
+  return 'game';
 }
 
 function getSoundtrackSection(barIndex) {
@@ -908,8 +1135,15 @@ function scheduleSoundtrackStep(step, time) {
     return;
   }
 
-  if (getMusicMode() === 'title') {
+  const musicMode = getMusicMode();
+
+  if (musicMode === 'title') {
     scheduleTitleStep(step % TITLE_LOOP_STEPS, time);
+    return;
+  }
+
+  if (musicMode === 'victory') {
+    scheduleVictoryStep(step % TITLE_LOOP_STEPS, time);
     return;
   }
 
@@ -998,6 +1232,47 @@ function scheduleTitleStep(step, time) {
 
   if (TITLE_DRUMS.hat[stepInBar] === 'x') {
     playHat(time, 0.05, 'title');
+  }
+}
+
+function scheduleVictoryStep(step, time) {
+  const barIndex = Math.floor(step / STEPS_PER_BAR) % TITLE_LOOP_BARS;
+  const stepInBar = step % STEPS_PER_BAR;
+  const chord = TITLE_CHORDS[barIndex];
+  const bassPattern = VICTORY_BASS_PATTERNS[barIndex % VICTORY_BASS_PATTERNS.length];
+  const leadPattern = VICTORY_LEAD_PATTERNS[barIndex % VICTORY_LEAD_PATTERNS.length];
+  const bassOffset = bassPattern[stepInBar];
+  const arpIndex = VICTORY_ARP_PATTERN[stepInBar];
+  const leadOffset = leadPattern[stepInBar];
+
+  if (stepInBar === 0) {
+    playPadChord(chord.tones, time, 1.35, false);
+  }
+
+  if (stepInBar === 8) {
+    playPadChord([chord.tones[0] + 12, chord.tones[1], chord.tones[2]], time, 0.8, false);
+  }
+
+  if (bassOffset !== null) {
+    playBassNote(chord.root + bassOffset, time, 0.26, 'title');
+  }
+
+  playArpNote(resolveArpNote(chord, arpIndex), time, 0.12, 'title');
+
+  if (leadOffset !== null) {
+    playLeadNote(chord.root + leadOffset, time, 0.18, 0.09);
+  }
+
+  if (VICTORY_DRUMS.kick[stepInBar] === 'x') {
+    playKick(time);
+  }
+
+  if (VICTORY_DRUMS.snare[stepInBar] === 'x') {
+    playSnare(time, 'title');
+  }
+
+  if (VICTORY_DRUMS.hat[stepInBar] === 'x') {
+    playHat(time, 0.04, 'title');
   }
 }
 
@@ -1180,6 +1455,56 @@ function playGameOverSound() {
   noiseSource.stop(startTime + 0.74);
 }
 
+function playCoreIgnitionSound() {
+  activateSoundtrack().catch(() => {});
+
+  if (!soundtrack.context || !soundtrack.sfxGain || !soundtrack.noiseBuffer) {
+    return;
+  }
+
+  const start = soundtrack.context.currentTime + 0.01;
+  createSfxVoice('triangle', midiToFrequency(52), start, 0.28, 0.09, midiToFrequency(76));
+  createSfxVoice('sawtooth', midiToFrequency(64), start + 0.06, 0.44, 0.11, midiToFrequency(95));
+  createSfxVoice('square', midiToFrequency(76), start + 0.14, 0.38, 0.08, midiToFrequency(100));
+
+  const noiseSource = soundtrack.context.createBufferSource();
+  const noiseFilter = soundtrack.context.createBiquadFilter();
+  const noiseGain = soundtrack.context.createGain();
+
+  noiseSource.buffer = soundtrack.noiseBuffer;
+  noiseFilter.type = 'bandpass';
+  noiseFilter.frequency.setValueAtTime(1400, start);
+  noiseGain.gain.setValueAtTime(0.0001, start);
+  noiseGain.gain.exponentialRampToValueAtTime(0.12, start + 0.08);
+  noiseGain.gain.exponentialRampToValueAtTime(0.0001, start + 0.46);
+
+  noiseSource.connect(noiseFilter);
+  noiseFilter.connect(noiseGain);
+  noiseGain.connect(soundtrack.sfxGain);
+  noiseSource.start(start);
+  noiseSource.stop(start + 0.5);
+}
+
+function playPhaseCueSound() {
+  activateSoundtrack().catch(() => {});
+
+  if (!soundtrack.context || !soundtrack.sfxGain) {
+    return;
+  }
+
+  const start = soundtrack.context.currentTime + 0.01;
+  createSfxVoice('square', midiToFrequency(72), start, 0.08, 0.06, midiToFrequency(84));
+  createSfxVoice('triangle', midiToFrequency(60), start + 0.05, 0.14, 0.05, midiToFrequency(72));
+}
+
+function triggerPhaseCue(title, subtitle = '') {
+  presentation.cueTitle = title;
+  presentation.cueSubtitle = subtitle;
+  presentation.cueTimer = 2.2;
+  presentation.flashAlpha = Math.max(presentation.flashAlpha, 0.18);
+  playPhaseCueSound();
+}
+
 function updateSoundtrackMix() {
   if (!soundtrack.masterGain || !soundtrack.filter || !soundtrack.context) {
     return;
@@ -1188,12 +1513,30 @@ function updateSoundtrackMix() {
   const now = soundtrack.context.currentTime;
   let targetGain = 0.0001;
   let targetFilter = 1750;
-  soundtrack.tempo = getMusicMode() === 'title' ? 92 : 102;
+  const musicMode = getMusicMode();
+  soundtrack.tempo = musicMode === 'title'
+    ? 92
+    : musicMode === 'core-boss'
+      ? 124
+      : musicMode === 'core-sprint'
+        ? 150
+        : musicMode === 'victory'
+          ? 128
+          : 102;
 
   if (soundtrack.enabled) {
-    if (getMusicMode() === 'title') {
+    if (musicMode === 'title') {
       targetGain = 0.22;
       targetFilter = 2850;
+    } else if (musicMode === 'core-boss') {
+      targetGain = 0.38;
+      targetFilter = 4100;
+    } else if (musicMode === 'core-sprint') {
+      targetGain = 0.43;
+      targetFilter = 4900;
+    } else if (musicMode === 'victory') {
+      targetGain = 0.31;
+      targetFilter = 4300;
     } else if (game.running) {
       targetGain = 0.32;
       targetFilter = 3600;
@@ -1286,8 +1629,14 @@ function setMusicVolume(value) {
 
 function currentGapWidth() {
   const config = getDifficultyConfig();
+  const depthProgress = getRunDepthProgress();
+  const squeeze = clamp(
+    Math.pow(depthProgress, 1.08) * 0.82 + smoothstep(0.58, 1, depthProgress) * 0.12,
+    0,
+    1
+  );
   return clamp(
-    config.baseGapWidth - game.score * config.gapShrinkRate,
+    lerp(config.baseGapWidth, config.minGapWidth, squeeze),
     config.minGapWidth,
     config.baseGapWidth
   );
@@ -1298,8 +1647,9 @@ function createFloor(y, difficultyIndex) {
   const margin = 26;
   const minGapX = margin;
   const maxGapX = GAME_WIDTH - gapWidth - margin;
-  const lateSpread = clamp((game.level - 50) / 28, 0, 1);
-  const phase = (difficultyIndex + game.score * 0.012) * (0.85 + lateSpread * 0.45);
+  const depthProgress = getRunDepthProgress();
+  const lateSpread = smoothstep(0.73, 1, depthProgress);
+  const phase = (difficultyIndex + depthProgress * 38 + game.elapsed * 0.28) * (0.88 + lateSpread * 0.42);
   let wave = Math.sin(phase) * 0.5 + 0.5;
 
   if (lateSpread > 0) {
@@ -1321,17 +1671,39 @@ function createFloor(y, difficultyIndex) {
 }
 
 function createCoreBossFloor(y, rowIndex) {
+  const config = getDifficultyConfig();
   const pattern = CORE_BOSS_PATTERNS[rowIndex % CORE_BOSS_PATTERNS.length];
   const margin = 18;
-  const gapWidth = pattern.width;
+  const gatePulse = [0, 0.55, 1, 0.35][rowIndex % 4];
+  const gapWidth = clamp(
+    pattern.width + config.bossGapBonus - config.bossGateTighten * gatePulse,
+    52,
+    GAME_WIDTH - margin * 2 - 12
+  );
   const minCenter = margin + gapWidth * 0.5;
   const maxCenter = GAME_WIDTH - margin - gapWidth * 0.5;
-  const gapCenter = lerp(minCenter, maxCenter, pattern.center);
+  const targetCenter = lerp(minCenter, maxCenter, pattern.center);
+  const previousCenter = endgame.lastBossCenter || targetCenter;
+  const gapCenter = rowIndex === 0
+    ? targetCenter
+    : clamp(
+      targetCenter,
+      minCenter,
+      maxCenter
+    );
+  const constrainedCenter = rowIndex === 0
+    ? gapCenter
+    : clamp(
+      gapCenter,
+      previousCenter - config.bossMaxCenterShift,
+      previousCenter + config.bossMaxCenterShift
+    );
+  endgame.lastBossCenter = clamp(constrainedCenter, minCenter, maxCenter);
 
   return {
     y,
     thickness: FLOOR_THICKNESS + 2,
-    gapX: gapCenter - gapWidth * 0.5,
+    gapX: endgame.lastBossCenter - gapWidth * 0.5,
     gapWidth,
     glow: rowIndex % 2,
     kind: 'core',
@@ -1342,10 +1714,25 @@ function resetEndgameState() {
   endgame.phase = 'none';
   endgame.bossTimer = 0;
   endgame.nextBossRowIndex = 0;
+  endgame.lastBossCenter = 0;
+  endgame.landingTimer = 0;
+  endgame.landingStartX = 0;
+  endgame.briefingIndex = 0;
+  endgame.briefingVisibleText = '';
+  endgame.briefingTyping = false;
+  endgame.briefingReady = false;
+  endgame.briefingNextCharTime = 0;
+  endgame.briefingActiveSpeaker = 'command';
+  endgame.endingVisibleText = '';
+  endgame.endingTyping = false;
+  endgame.endingReady = false;
+  endgame.endingNextCharTime = 0;
   endgame.sprintTimer = CORE_SPRINT_DURATION;
+  endgame.sprintDuration = CORE_SPRINT_DURATION;
   endgame.sprintHazardTimer = 0;
   endgame.sprintHazards = [];
   endgame.activationTimer = 0;
+  endgame.completionTime = 0;
   endgame.endingIndex = 0;
 }
 
@@ -1421,21 +1808,22 @@ function drawDialoguePortrait(speakerKey) {
   };
 
   if (speakerKey === 'jett') {
-    const skin = '#e0a57f';
+    const skin = '#d7a07f';
     const hair = '#121318';
     const jacket = rgbToString(speaker.suit, 0.96);
-    const accent = rgbToString(speaker.accent, 0.95);
-    const visor = rgbToString(speaker.visor, 0.9);
+    const accent = '#ffd76e';
+    const visor = '#86f2ff';
 
     fillPixels([[2, 11, 12, 3], [2, 14, 5, 2], [9, 14, 5, 2], [1, 16, 14, 1]], jacket);
-    fillPixels([[2, 12, 2, 4], [12, 12, 2, 4], [3, 10, 1, 2], [11, 10, 1, 2]], accent);
-    fillPixels([[4, 5, 8, 2], [3, 7, 10, 1], [4, 8, 5, 1], [9, 7, 2, 1], [10, 8, 1, 1]], hair);
+    fillPixels([[2, 12, 2, 4], [12, 12, 2, 4], [3, 10, 1, 2], [11, 10, 1, 2], [5, 15, 5, 1]], accent);
+    fillPixels([[4, 4, 8, 2], [3, 6, 11, 1], [4, 7, 8, 1], [3, 8, 4, 1], [9, 8, 3, 1], [11, 9, 1, 1]], hair);
     fillPixels([[4, 9, 8, 5], [5, 14, 6, 1]], skin);
-    fillPixels([[5, 10, 2, 1], [9, 10, 2, 1]], '#fff8ef');
-    fillPixels([[7, 12, 3, 1]], '#28160f');
-    fillPixels([[8, 13, 2, 1]], '#f7c8b8');
-    fillPixels([[10, 8, 2, 1], [11, 9, 1, 1]], visor);
-    fillPixels([[12, 6, 1, 6]], accent);
+    fillPixels([[5, 10, 2, 1], [9, 10, 2, 1]], '#fff7ea');
+    fillPixels([[7, 12, 3, 1]], '#25140f');
+    fillPixels([[8, 13, 2, 1]], '#f0c4b2');
+    fillPixels([[9, 8, 3, 1], [10, 9, 2, 1]], visor);
+    fillPixels([[11, 5, 2, 1], [12, 6, 1, 6]], accent);
+    fillPixels([[4, 5, 1, 1], [5, 4, 2, 1]], '#2a2c35');
   } else if (speakerKey === 'command') {
     const skin = '#cdb39f';
     const hair = '#f2f5ff';
@@ -1475,12 +1863,19 @@ function drawDialoguePortrait(speakerKey) {
 
 function renderDialoguePanel(lines, activeSpeaker, prompt = '', badgeText = 'Live') {
   const speaker = SPEAKERS[activeSpeaker] || SPEAKERS.command;
+  const speakerSet = new Set(lines.map((line) => line.speaker));
+  const inlineSpeakerLabels = speakerSet.size > 1;
   setOverlayMode('dialogue');
   dialogueBadge.textContent = badgeText;
   dialogueSpeaker.textContent = speaker.label;
   dialogueSpeaker.style.color = speaker.color;
   dialogueLines.innerHTML = lines
-    .map((line) => `<p class="dialogue-line"><span class="dialogue-line-speaker ${line.speaker}">${SPEAKERS[line.speaker].label}:</span>${line.text}</p>`)
+    .map((line) => {
+      const prefix = inlineSpeakerLabels
+        ? `<span class="dialogue-line-speaker ${line.speaker}">${SPEAKERS[line.speaker].label}:</span>`
+        : '';
+      return `<p class="dialogue-line">${prefix}${line.text}</p>`;
+    })
     .join('');
   setOverlayPrompt(prompt, Boolean(prompt));
   drawDialoguePortrait(activeSpeaker);
@@ -1493,6 +1888,91 @@ function renderDialogueOverlay() {
     overlayPrompt.hidden ? '' : overlayPrompt.textContent,
     intro.mode === 'launch' ? 'Drop' : 'Live'
   );
+}
+
+function renderBriefingOverlay() {
+  renderDialoguePanel(
+    [{ speaker: endgame.briefingActiveSpeaker, text: endgame.briefingVisibleText }],
+    endgame.briefingActiveSpeaker,
+    overlayPrompt.hidden ? '' : overlayPrompt.textContent,
+    'Core Link'
+  );
+}
+
+function startBriefingEntry(index) {
+  const entry = CORE_SPRINT_BRIEFING[index];
+  endgame.briefingIndex = index;
+  endgame.briefingVisibleText = '';
+  endgame.briefingTyping = true;
+  endgame.briefingReady = false;
+  endgame.briefingActiveSpeaker = entry.speaker;
+  intro.pauseUntil = performance.now() + 90;
+  endgame.briefingNextCharTime = intro.pauseUntil + DIALOGUE_CHAR_MS;
+  setOverlayPrompt('', false);
+  renderBriefingOverlay();
+}
+
+function startEndingEntry(index) {
+  const screen = ENDING_SCREENS[index];
+  const entry = screen.lines[0];
+  endgame.endingVisibleText = '';
+  endgame.endingTyping = true;
+  endgame.endingReady = false;
+  intro.pauseUntil = performance.now() + 90;
+  endgame.endingNextCharTime = intro.pauseUntil + DIALOGUE_CHAR_MS;
+  setOverlayPrompt('', false);
+  renderDialoguePanel(
+    [{ speaker: entry.speaker, text: '' }],
+    entry.speaker,
+    '',
+    screen.badge || 'Archive'
+  );
+}
+
+function completeBriefingEntry() {
+  const entry = CORE_SPRINT_BRIEFING[endgame.briefingIndex];
+  endgame.briefingVisibleText = entry.text;
+  endgame.briefingTyping = false;
+  endgame.briefingReady = true;
+  endgame.briefingActiveSpeaker = entry.speaker;
+  const isFinalEntry = endgame.briefingIndex === CORE_SPRINT_BRIEFING.length - 1;
+  setOverlayPrompt(isFinalEntry ? 'PRESS START TO SPRINT' : 'PRESS START');
+  renderBriefingOverlay();
+}
+
+function completeEndingEntry() {
+  const screen = ENDING_SCREENS[endgame.endingIndex];
+  const entry = screen.lines[0];
+  endgame.endingVisibleText = entry.text;
+  endgame.endingTyping = false;
+  endgame.endingReady = true;
+  setOverlayPrompt(screen.prompt, Boolean(screen.prompt));
+  renderDialoguePanel(
+    [{ speaker: entry.speaker, text: entry.text }],
+    entry.speaker,
+    screen.prompt,
+    screen.badge || 'Archive'
+  );
+}
+
+function advanceBriefingSequence() {
+  if (endgame.briefingTyping) {
+    completeBriefingEntry();
+    return;
+  }
+
+  if (!endgame.briefingReady) {
+    return;
+  }
+
+  playUiConfirmSound();
+  if (endgame.briefingIndex < CORE_SPRINT_BRIEFING.length - 1) {
+    startBriefingEntry(endgame.briefingIndex + 1);
+    return;
+  }
+
+  hideOverlay();
+  beginSprintPhase();
 }
 
 function playUiConfirmSound() {
@@ -1508,13 +1988,16 @@ function playUiConfirmSound() {
 }
 
 function playTransmissionBleep(speakerKey) {
+  activateSoundtrack().catch(() => {});
+
   if (!soundtrack.context || !soundtrack.sfxGain) {
     return;
   }
 
   const start = soundtrack.context.currentTime + 0.003;
   const baseNote = speakerKey === 'jett' ? 86 : 79;
-  createSfxVoice('square', midiToFrequency(baseNote), start, 0.025, 0.018, midiToFrequency(baseNote + 2));
+  createSfxVoice('square', midiToFrequency(baseNote), start, 0.03, 0.04, midiToFrequency(baseNote + 2));
+  createSfxVoice('triangle', midiToFrequency(baseNote - 12), start, 0.022, 0.016, midiToFrequency(baseNote - 10));
 }
 
 function playLaunchSound() {
@@ -1527,6 +2010,62 @@ function playLaunchSound() {
   const start = soundtrack.context.currentTime + 0.03;
   createSfxVoice('triangle', midiToFrequency(40), start, 0.42, 0.12, midiToFrequency(52));
   createSfxVoice('square', midiToFrequency(57), start + 0.16, 0.22, 0.08, midiToFrequency(69));
+}
+
+function playCoreBeamSound() {
+  activateSoundtrack().catch(() => {});
+
+  if (!soundtrack.context || !soundtrack.sfxGain || !soundtrack.noiseBuffer) {
+    return;
+  }
+
+  const start = soundtrack.context.currentTime + 0.01;
+  createSfxVoice('sawtooth', midiToFrequency(74), start, 0.12, 0.08, midiToFrequency(98));
+  createSfxVoice('square', midiToFrequency(86), start + 0.02, 0.08, 0.05, midiToFrequency(103));
+
+  const noiseSource = soundtrack.context.createBufferSource();
+  const noiseFilter = soundtrack.context.createBiquadFilter();
+  const noiseGain = soundtrack.context.createGain();
+
+  noiseSource.buffer = soundtrack.noiseBuffer;
+  noiseFilter.type = 'highpass';
+  noiseFilter.frequency.setValueAtTime(2800, start);
+  noiseGain.gain.setValueAtTime(0.05, start);
+  noiseGain.gain.exponentialRampToValueAtTime(0.0001, start + 0.12);
+
+  noiseSource.connect(noiseFilter);
+  noiseFilter.connect(noiseGain);
+  noiseGain.connect(soundtrack.sfxGain);
+  noiseSource.start(start);
+  noiseSource.stop(start + 0.14);
+}
+
+function playDebrisImpactSound() {
+  activateSoundtrack().catch(() => {});
+
+  if (!soundtrack.context || !soundtrack.sfxGain || !soundtrack.noiseBuffer) {
+    return;
+  }
+
+  const start = soundtrack.context.currentTime + 0.01;
+  createSfxVoice('triangle', midiToFrequency(43), start, 0.18, 0.09, midiToFrequency(29));
+  createSfxVoice('square', midiToFrequency(55), start, 0.07, 0.045, midiToFrequency(38));
+
+  const noiseSource = soundtrack.context.createBufferSource();
+  const noiseFilter = soundtrack.context.createBiquadFilter();
+  const noiseGain = soundtrack.context.createGain();
+
+  noiseSource.buffer = soundtrack.noiseBuffer;
+  noiseFilter.type = 'bandpass';
+  noiseFilter.frequency.setValueAtTime(920, start);
+  noiseGain.gain.setValueAtTime(0.09, start);
+  noiseGain.gain.exponentialRampToValueAtTime(0.0001, start + 0.18);
+
+  noiseSource.connect(noiseFilter);
+  noiseFilter.connect(noiseGain);
+  noiseGain.connect(soundtrack.sfxGain);
+  noiseSource.start(start);
+  noiseSource.stop(start + 0.2);
 }
 
 function showTitleScreen() {
@@ -1552,21 +2091,26 @@ function showTitleScreen() {
   drawDialoguePortrait('jett');
 }
 
+function startCurrentIntroEntry() {
+  const entry = INTRO_SCREENS[intro.screenIndex][intro.lineIndex];
+  intro.charIndex = 0;
+  intro.visibleLines = [{ speaker: entry.speaker, text: '' }];
+  intro.typing = true;
+  intro.ready = false;
+  intro.activeSpeaker = entry.speaker;
+  intro.pauseUntil = performance.now() + 90;
+  intro.nextCharTime = intro.pauseUntil + DIALOGUE_CHAR_MS;
+  setOverlayPrompt('', false);
+  renderDialogueOverlay();
+}
+
 function startIntroScreen(screenIndex) {
   intro.mode = 'dialogue';
   intro.screenIndex = screenIndex;
   intro.lineIndex = 0;
-  intro.charIndex = 0;
-  intro.visibleLines = [];
-  intro.typing = true;
-  intro.ready = false;
-  intro.activeSpeaker = INTRO_SCREENS[screenIndex][0].speaker;
-  intro.pauseUntil = performance.now() + 90;
-  intro.nextCharTime = intro.pauseUntil + DIALOGUE_CHAR_MS;
   setStatus(`Transmission ${screenIndex + 1}/2`);
   startButton.textContent = 'Advance';
-  setOverlayPrompt('');
-  renderDialogueOverlay();
+  startCurrentIntroEntry();
 }
 
 function beginIntroSequence() {
@@ -1575,15 +2119,17 @@ function beginIntroSequence() {
   setSummary('Launch command channel open. Jett is receiving the drop brief.');
 }
 
-function completeCurrentIntroScreen() {
-  const screen = INTRO_SCREENS[intro.screenIndex];
-  intro.visibleLines = screen.map((line) => ({ speaker: line.speaker, text: line.text }));
-  intro.lineIndex = screen.length;
-  intro.charIndex = 0;
+function completeCurrentIntroEntry() {
+  const entry = INTRO_SCREENS[intro.screenIndex][intro.lineIndex];
+  intro.visibleLines = [{ speaker: entry.speaker, text: entry.text }];
+  intro.charIndex = entry.text.length;
   intro.typing = false;
   intro.ready = true;
-  intro.activeSpeaker = screen[screen.length - 1].speaker;
-  setOverlayPrompt(intro.screenIndex === INTRO_SCREENS.length - 1 ? 'PRESS START TO LAUNCH' : 'PRESS START');
+  intro.activeSpeaker = entry.speaker;
+  const isFinalEntry =
+    intro.screenIndex === INTRO_SCREENS.length - 1 &&
+    intro.lineIndex === INTRO_SCREENS[intro.screenIndex].length - 1;
+  setOverlayPrompt(isFinalEntry ? 'PRESS START TO LAUNCH' : 'PRESS START');
   renderDialogueOverlay();
 }
 
@@ -1613,13 +2159,16 @@ function advanceIntroSequence() {
 
   if (intro.mode === 'dialogue') {
     if (intro.typing) {
-      completeCurrentIntroScreen();
+      completeCurrentIntroEntry();
       return;
     }
 
     if (intro.ready) {
       playUiConfirmSound();
-      if (intro.screenIndex < INTRO_SCREENS.length - 1) {
+      if (intro.lineIndex < INTRO_SCREENS[intro.screenIndex].length - 1) {
+        intro.lineIndex += 1;
+        startCurrentIntroEntry();
+      } else if (intro.screenIndex < INTRO_SCREENS.length - 1) {
         startIntroScreen(intro.screenIndex + 1);
       } else {
         beginLaunchTransition();
@@ -1630,47 +2179,74 @@ function advanceIntroSequence() {
 
 function updateIntroSequence(timestamp) {
   if (intro.mode === 'dialogue' && intro.typing) {
-    const screen = INTRO_SCREENS[intro.screenIndex];
+    const entry = INTRO_SCREENS[intro.screenIndex][intro.lineIndex];
 
     while (intro.typing && timestamp >= intro.nextCharTime) {
-      if (intro.lineIndex >= screen.length) {
-        completeCurrentIntroScreen();
-        break;
-      }
+      intro.activeSpeaker = entry.speaker;
 
-      const activeLine = screen[intro.lineIndex];
-      intro.activeSpeaker = activeLine.speaker;
-
-      if (!intro.visibleLines[intro.lineIndex]) {
-        intro.visibleLines[intro.lineIndex] = { speaker: activeLine.speaker, text: '' };
-      }
-
-      if (intro.charIndex < activeLine.text.length) {
-        const nextCharacter = activeLine.text[intro.charIndex];
-        intro.visibleLines[intro.lineIndex].text += nextCharacter;
+      if (intro.charIndex < entry.text.length) {
+        const nextCharacter = entry.text[intro.charIndex];
+        intro.visibleLines[0].text += nextCharacter;
         intro.charIndex += 1;
 
         if (nextCharacter.trim()) {
-          playTransmissionBleep(activeLine.speaker);
+          playTransmissionBleep(entry.speaker);
         }
 
         const extraDelay = nextCharacter === '.' || nextCharacter === '!' || nextCharacter === '?' ? 74 : nextCharacter === ',' ? 42 : 0;
         intro.nextCharTime += DIALOGUE_CHAR_MS + extraDelay;
       } else {
-        intro.lineIndex += 1;
-        intro.charIndex = 0;
-
-        if (intro.lineIndex >= screen.length) {
-          completeCurrentIntroScreen();
-        } else {
-          intro.activeSpeaker = screen[intro.lineIndex].speaker;
-          intro.pauseUntil = timestamp + DIALOGUE_LINE_PAUSE_MS;
-          intro.nextCharTime = intro.pauseUntil + DIALOGUE_CHAR_MS;
-        }
+        completeCurrentIntroEntry();
       }
     }
 
     renderDialogueOverlay();
+  } else if (endgame.phase === 'briefing' && endgame.briefingTyping) {
+    const entry = CORE_SPRINT_BRIEFING[endgame.briefingIndex];
+
+    while (endgame.briefingTyping && timestamp >= endgame.briefingNextCharTime) {
+      if (endgame.briefingVisibleText.length < entry.text.length) {
+        const nextCharacter = entry.text[endgame.briefingVisibleText.length];
+        endgame.briefingVisibleText += nextCharacter;
+
+        if (nextCharacter.trim()) {
+          playTransmissionBleep(entry.speaker);
+        }
+
+        const extraDelay = nextCharacter === '.' || nextCharacter === '!' || nextCharacter === '?' ? 74 : nextCharacter === ',' ? 42 : 0;
+        endgame.briefingNextCharTime += DIALOGUE_CHAR_MS + extraDelay;
+      } else {
+        completeBriefingEntry();
+      }
+    }
+
+    renderBriefingOverlay();
+  } else if (endgame.phase === 'ending' && endgame.endingTyping) {
+    const screen = ENDING_SCREENS[endgame.endingIndex];
+    const entry = screen.lines[0];
+
+    while (endgame.endingTyping && timestamp >= endgame.endingNextCharTime) {
+      if (endgame.endingVisibleText.length < entry.text.length) {
+        const nextCharacter = entry.text[endgame.endingVisibleText.length];
+        endgame.endingVisibleText += nextCharacter;
+
+        if (nextCharacter.trim()) {
+          playTransmissionBleep(entry.speaker);
+        }
+
+        const extraDelay = nextCharacter === '.' || nextCharacter === '!' || nextCharacter === '?' ? 74 : nextCharacter === ',' ? 42 : 0;
+        endgame.endingNextCharTime += DIALOGUE_CHAR_MS + extraDelay;
+      } else {
+        completeEndingEntry();
+      }
+    }
+
+    renderDialoguePanel(
+      [{ speaker: entry.speaker, text: endgame.endingVisibleText }],
+      entry.speaker,
+      overlayPrompt.hidden ? '' : overlayPrompt.textContent,
+      screen.badge || 'Archive'
+    );
   } else if (intro.mode === 'launch') {
     intro.launchProgress = clamp((timestamp - intro.launchStartTime) / LAUNCH_DURATION_MS, 0, 1);
 
@@ -1682,36 +2258,72 @@ function updateIntroSequence(timestamp) {
 }
 
 function createSprintHazard() {
-  const type = randomFromSeed(game.elapsed * 13.7 + endgame.sprintTimer * 2.1) > 0.45 ? 'debris' : 'strike';
+  const config = getDifficultyConfig();
+  const type = randomFromSeed(game.elapsed * 13.7 + endgame.sprintTimer * 2.1) > 0.38 ? 'debris' : 'strike';
+  const avoidRadius = 28;
+  const constrainHazardX = (rawX) => {
+    if (Math.abs(rawX - game.ball.x) >= avoidRadius) {
+      return rawX;
+    }
+
+    return clamp(
+      rawX < game.ball.x ? game.ball.x - avoidRadius : game.ball.x + avoidRadius,
+      34,
+      GAME_WIDTH - 34
+    );
+  };
 
   if (type === 'debris') {
     return {
       type,
-      x: 28 + randomFromSeed(game.elapsed * 5.1 + endgame.sprintTimer) * (GAME_WIDTH - 56),
+      x: constrainHazardX(28 + randomFromSeed(game.elapsed * 5.1 + endgame.sprintTimer) * (GAME_WIDTH - 56)),
       y: -24,
-      width: 18 + randomFromSeed(game.elapsed * 3.4 + 7) * 16,
+      width: 22 + randomFromSeed(game.elapsed * 3.4 + 7) * 18,
       height: 18 + randomFromSeed(game.elapsed * 4.8 + 3) * 18,
-      vy: 250 + randomFromSeed(game.elapsed * 6.2 + 11) * 120,
+      vy: (295 + randomFromSeed(game.elapsed * 6.2 + 11) * 145) * config.debrisSpeedScale,
       active: true,
     };
   }
 
   return {
     type,
-    x: 34 + randomFromSeed(game.elapsed * 7.3 + endgame.sprintTimer * 4.3) * (GAME_WIDTH - 68),
+    x: constrainHazardX(34 + randomFromSeed(game.elapsed * 7.3 + endgame.sprintTimer * 4.3) * (GAME_WIDTH - 68)),
     y: 0,
-    width: 26,
-    telegraph: 0.62,
-    duration: 0.2,
+    width: 30,
+    telegraph: Math.max(0.3, 0.5 + config.strikeTelegraphBonus),
+    initialTelegraph: Math.max(0.3, 0.5 + config.strikeTelegraphBonus),
+    duration: 0.28,
     active: false,
   };
 }
 
+function beginLandingSequence() {
+  endgame.phase = 'landing';
+  endgame.landingTimer = 0;
+  endgame.landingStartX = clamp(game.ball.x, BALL_RADIUS + 12, GAME_WIDTH - BALL_RADIUS - 12);
+  game.running = false;
+  game.paused = false;
+  game.lastTimestamp = 0;
+  game.ball.vx = 0;
+  game.ball.vy = 0;
+  game.trail = [];
+  pauseButton.disabled = true;
+  pauseButton.textContent = 'Pause';
+  startButton.textContent = 'Stabilizing...';
+  hideOverlay();
+  setStatus('Core Floor');
+  setSummary('The chamber floor catches Jett for a split second before the reactor tips into the ignition lane.');
+  triggerPhaseCue('Core Floor', 'Brace for reactor tilt.');
+  updateSoundtrackMix();
+}
+
 function beginCoreBossPhase() {
+  const config = getDifficultyConfig();
   endgame.phase = 'boss';
   endgame.bossTimer = 0;
   endgame.nextBossRowIndex = 0;
-  game.scrollSpeed = Math.max(getDifficultyConfig().maxScrollSpeed * 0.82, 220);
+  endgame.lastBossCenter = 0;
+  game.scrollSpeed = config.bossBaseScrollSpeed;
   game.catchUpSpeed = 0;
   game.ball.vx = 0;
   game.ball.vy = 0;
@@ -1721,6 +2333,7 @@ function beginCoreBossPhase() {
   setSummary('The living core is active. Its chamber is rejecting you with deliberate defense patterns.');
   pauseButton.disabled = false;
   startButton.textContent = 'Pause / Resume';
+  triggerPhaseCue('Living Core', 'Survive the hostile chamber patterns.');
   updateSoundtrackMix();
 }
 
@@ -1734,30 +2347,90 @@ function startDebugEndgameRun() {
 }
 
 function beginSprintPhase() {
+  const config = getDifficultyConfig();
   endgame.phase = 'sprint';
-  endgame.sprintTimer = CORE_SPRINT_DURATION;
-  endgame.sprintHazardTimer = 0.45;
+  endgame.sprintDuration = config.sprintDuration;
+  endgame.sprintTimer = endgame.sprintDuration;
+  endgame.sprintHazardTimer = 0.22 * config.sprintHazardIntervalScale;
   endgame.sprintHazards = [];
-  game.ball.x = 36;
+  game.running = true;
+  game.paused = false;
+  game.lastTimestamp = 0;
+  game.ball.x = 24;
   game.ball.y = SPRINT_TRACK_Y - BALL_RADIUS;
   game.ball.vx = 0;
   game.ball.vy = 0;
   game.trail = [];
+  pauseButton.disabled = false;
+  pauseButton.textContent = 'Pause';
+  startButton.textContent = 'Restart Run';
+  hideOverlay();
   setStatus('Ignition Sprint');
   setSummary('The chamber is breaking apart. Reach the ignition node before the synchronization window collapses.');
+  triggerPhaseCue('Ignition Sprint', 'Reach the ignition node.');
   updateSoundtrackMix();
+}
+
+function beginSprintBriefing() {
+  const config = getDifficultyConfig();
+  endgame.phase = 'briefing';
+  endgame.briefingIndex = 0;
+  endgame.briefingVisibleText = '';
+  endgame.briefingTyping = false;
+  endgame.briefingReady = false;
+  endgame.briefingActiveSpeaker = 'command';
+  endgame.sprintDuration = config.sprintDuration;
+  endgame.sprintTimer = endgame.sprintDuration;
+  endgame.sprintHazards = [];
+  game.running = false;
+  game.paused = false;
+  game.ball.x = 24;
+  game.ball.y = SPRINT_TRACK_Y - BALL_RADIUS;
+  game.ball.vx = 0;
+  game.ball.vy = 0;
+  game.trail = [];
+  pauseButton.disabled = true;
+  pauseButton.textContent = 'Pause';
+  startButton.textContent = 'Start Sprint';
+  setStatus('Ignition Node');
+  setSummary('Command is guiding Jett to the ignition node. One clean sprint finishes the mission.');
+  triggerPhaseCue('Core Staging', 'The reactor floor is shifting beneath you.');
+  startBriefingEntry(0);
+  updateSoundtrackMix();
+}
+
+function updateLandingSequence(deltaTime) {
+  endgame.landingTimer += deltaTime;
+  const progress = clamp(endgame.landingTimer / CORE_LANDING_DURATION, 0, 1);
+  const settle = smoothstep(0, 0.28, progress);
+  const roll = smoothstep(0.34, 1, progress);
+
+  game.ball.y = lerp(132, SPRINT_TRACK_Y - BALL_RADIUS, settle);
+  game.ball.x = lerp(endgame.landingStartX, 24, roll);
+  game.ball.vx = 0;
+  game.ball.vy = 0;
+  updateTrail();
+
+  if (progress >= 1) {
+    beginSprintBriefing();
+  }
 }
 
 function beginActivationSequence() {
   endgame.phase = 'activation';
   endgame.activationTimer = 0;
+  endgame.completionTime = game.elapsed;
   endgame.sprintHazards = [];
+  game.running = false;
+  game.paused = false;
   game.ball.x = SPRINT_NODE_X;
   game.ball.y = SPRINT_TRACK_Y - BALL_RADIUS;
   game.ball.vx = 0;
   game.ball.vy = 0;
   setStatus('Core Ignition');
   setSummary('Synchronization accepted. The living core is rebooting through Jett’s ignition link.');
+  triggerPhaseCue('Core Synchronization', 'Ignition accepted.');
+  playCoreIgnitionSound();
   updateSoundtrackMix();
 }
 
@@ -1778,8 +2451,15 @@ function showEndingScreen(index) {
   startButton.textContent = index === ENDING_SCREENS.length - 1 ? 'Return To Title' : 'Continue';
 
   if (screen.type === 'dialogue') {
-    const activeSpeaker = screen.lines[screen.lines.length - 1].speaker;
-    renderDialoguePanel(screen.lines, activeSpeaker, screen.prompt, screen.badge || 'Archive');
+    startEndingEntry(index);
+  } else if (screen.type === 'stats') {
+    const difficultyLabel = getDifficultyConfig().label;
+    showOverlayHtml(
+      screen.label,
+      screen.title,
+      `Score <strong>${Math.ceil(game.score)}</strong><br>Time <strong>${formatDuration(endgame.completionTime)}</strong><br>Difficulty <strong>${difficultyLabel}</strong><br>Best <strong>${game.best}</strong>`,
+      screen.prompt
+    );
   } else {
     showOverlayHtml(screen.label, screen.title, screen.html, screen.prompt);
   }
@@ -1795,11 +2475,27 @@ function showEndingScreen(index) {
 }
 
 function beginEndingSequence() {
+  const finalScore = Math.ceil(game.score);
+  if (finalScore > game.best) {
+    game.best = finalScore;
+    saveBestScore(game.best);
+  }
+  updateHud();
+  triggerPhaseCue('VX-99 Stabilized', 'Power is returning across the planet.');
   showEndingScreen(0);
 }
 
 function advanceEndingSequence() {
   if (endgame.phase !== 'ending') {
+    return;
+  }
+
+  if (ENDING_SCREENS[endgame.endingIndex]?.type === 'dialogue' && endgame.endingTyping) {
+    completeEndingEntry();
+    return;
+  }
+
+  if (ENDING_SCREENS[endgame.endingIndex]?.type === 'dialogue' && !endgame.endingReady) {
     return;
   }
 
@@ -1877,8 +2573,9 @@ function runVerticalPhysics(deltaTime, scoreRate) {
 }
 
 function updateCoreBossPhase(deltaTime) {
+  const config = getDifficultyConfig();
   endgame.bossTimer += deltaTime;
-  game.scrollSpeed = 210 + Math.sin(endgame.bossTimer * 1.4) * 12 + getDifficultyConfig().maxScrollSpeed * 0.08;
+  game.scrollSpeed = config.bossBaseScrollSpeed + Math.sin(endgame.bossTimer * 1.4) * config.bossWaveAmplitude;
   runVerticalPhysics(deltaTime, getDifficultyConfig().scoreRate * 0.55);
 
   if (game.gameOver) {
@@ -1886,11 +2583,12 @@ function updateCoreBossPhase(deltaTime) {
   }
 
   if (endgame.bossTimer >= CORE_BOSS_DURATION) {
-    beginSprintPhase();
+    beginLandingSequence();
   }
 }
 
 function updateSprintPhase(deltaTime) {
+  const config = getDifficultyConfig();
   endgame.sprintTimer -= deltaTime;
   endgame.sprintHazardTimer -= deltaTime;
 
@@ -1903,12 +2601,18 @@ function updateSprintPhase(deltaTime) {
 
   if (endgame.sprintHazardTimer <= 0) {
     endgame.sprintHazards.push(createSprintHazard());
-    endgame.sprintHazardTimer = SPRINT_HAZARD_INTERVAL * lerp(0.9, 0.55, 1 - endgame.sprintTimer / CORE_SPRINT_DURATION);
+    endgame.sprintHazardTimer = SPRINT_HAZARD_INTERVAL
+      * config.sprintHazardIntervalScale
+      * lerp(0.58, 0.34, 1 - endgame.sprintTimer / Math.max(1, endgame.sprintDuration));
   }
 
   endgame.sprintHazards = endgame.sprintHazards.filter((hazard) => {
     if (hazard.type === 'debris') {
       hazard.y += hazard.vy * deltaTime;
+      if (!hazard.impacted && hazard.y + hazard.height >= SPRINT_TRACK_Y) {
+        hazard.impacted = true;
+        playDebrisImpactSound();
+      }
       if (hazard.y > GAME_HEIGHT + 32) {
         return false;
       }
@@ -1928,6 +2632,7 @@ function updateSprintPhase(deltaTime) {
       hazard.telegraph -= deltaTime;
       if (hazard.telegraph <= 0) {
         hazard.active = true;
+        playCoreBeamSound();
       }
       return true;
     }
@@ -2074,8 +2779,15 @@ function endGame(reason) {
 
   updateHud();
   setStatus('Terminated');
+  const difficultyLabel = getDifficultyConfig().label;
+  const coreReached = endgame.phase !== 'none' || game.level >= ENDGAME_TRIGGER_LEVEL ? 'Yes' : 'No';
   setSummary(`Run ended at ${finalScore} points. ${reason}`);
-  showOverlay('Run Lost', `Score ${finalScore}`, reason, 'PRESS START TO RESTART');
+  showOverlayHtml(
+    'Run Lost',
+    `Score ${finalScore}`,
+    `${escapeHtml(reason)}<br><br>Level <strong>${game.level}</strong><br>Difficulty <strong>${difficultyLabel}</strong><br>Core Reached <strong>${coreReached}</strong>`,
+    'PRESS START TO RESTART'
+  );
   startButton.textContent = 'Restart Run';
   pauseButton.disabled = true;
   pauseButton.textContent = 'Pause';
@@ -2157,16 +2869,15 @@ function updateDifficulty() {
   }
 
   const config = getDifficultyConfig();
-  game.level = Math.floor(game.score / 160) + 1;
-  const post25Levels = Math.max(0, game.level - 25);
-  const post50Levels = Math.max(0, game.level - 50);
-  const effectiveMaxScrollSpeed = config.maxScrollSpeed + post25Levels * 4 + post50Levels * 6;
-  const intensity = clamp(
-    game.score * config.scrollRamp + post25Levels * 5 + post50Levels * 8,
-    0,
-    effectiveMaxScrollSpeed - config.baseScrollSpeed
-  );
-  game.scrollSpeed = config.baseScrollSpeed + intensity;
+  const depthProgress = getRunDepthProgress();
+  const levelFromScore = Math.floor(game.score / SCORE_PER_LEVEL) + 1;
+  const baseRamp = Math.pow(depthProgress, 1.02);
+  const pressureRamp = smoothstep(0.4, 1, depthProgress) * 0.08;
+  const finalRamp = smoothstep(0.88, 1, depthProgress) * 0.12;
+  const ramp = clamp(baseRamp + pressureRamp + finalRamp, 0, 1);
+
+  game.level = Math.min(levelFromScore, ENDGAME_TRIGGER_LEVEL);
+  game.scrollSpeed = lerp(config.baseScrollSpeed, config.maxScrollSpeed, ramp);
 }
 
 function updateTrail() {
@@ -2216,6 +2927,11 @@ function updateGame(deltaTime) {
 
   if (endgame.phase === 'boss') {
     updateCoreBossPhase(deltaTime);
+    return;
+  }
+
+  if (endgame.phase === 'landing') {
+    updateLandingSequence(deltaTime);
     return;
   }
 
@@ -2665,6 +3381,19 @@ function drawSprintTrack() {
   context.strokeRect(SPRINT_NODE_X - 18, trackTop - 28, 28, 28);
   context.fillStyle = rgbToString([255, 255, 255], 0.18 + nodePulse * 0.18);
   context.fillRect(SPRINT_NODE_X - 14, trackTop - 24, 20, 20);
+  context.strokeStyle = 'rgba(255, 214, 120, 0.42)';
+  context.lineWidth = 2;
+  for (let index = 0; index < 3; index += 1) {
+    context.beginPath();
+    context.moveTo(SPRINT_NODE_X - 64 - index * 20, trackTop - 14 - index * 3);
+    context.lineTo(SPRINT_NODE_X - 30 - index * 10, trackTop - 14);
+    context.stroke();
+  }
+  context.fillStyle = 'rgba(255, 240, 176, 0.94)';
+  context.font = '700 11px "Eurostile", "Trebuchet MS", sans-serif';
+  context.textAlign = 'center';
+  context.fillText('NODE', SPRINT_NODE_X - 4, trackTop - 36);
+  context.textAlign = 'left';
 
   endgame.sprintHazards.forEach((hazard) => {
     if (hazard.type === 'debris') {
@@ -2681,8 +3410,18 @@ function drawSprintTrack() {
       context.restore();
     } else {
       if (!hazard.active) {
+        const beamProgress = clamp(
+          1 - hazard.telegraph / Math.max(hazard.initialTelegraph || hazard.telegraph || 1, 0.001),
+          0,
+          1
+        );
+        const beamHeadY = beamProgress * GAME_HEIGHT;
+        context.fillStyle = 'rgba(255, 108, 108, 0.26)';
+        context.fillRect(hazard.x - hazard.width * 0.6, trackTop - 8, hazard.width * 1.2, 8);
         context.fillStyle = 'rgba(255, 108, 108, 0.24)';
-        context.fillRect(hazard.x - hazard.width * 0.5, 0, hazard.width, GAME_HEIGHT);
+        context.fillRect(hazard.x - hazard.width * 0.5, 0, hazard.width, beamHeadY);
+        context.fillStyle = 'rgba(255, 170, 120, 0.2)';
+        context.fillRect(hazard.x - hazard.width * 0.3, 0, hazard.width * 0.6, beamHeadY);
       } else {
         context.save();
         context.shadowBlur = 20;
@@ -2690,6 +3429,8 @@ function drawSprintTrack() {
         context.fillStyle = 'rgba(137, 251, 255, 0.78)';
         context.fillRect(hazard.x - hazard.width * 0.5, 0, hazard.width, GAME_HEIGHT);
         context.restore();
+        context.fillStyle = 'rgba(137, 251, 255, 0.24)';
+        context.fillRect(hazard.x - hazard.width * 0.7, trackTop - 10, hazard.width * 1.4, 10);
       }
     }
   });
@@ -2697,6 +3438,58 @@ function drawSprintTrack() {
   context.fillStyle = 'rgba(255, 255, 255, 0.9)';
   context.font = '700 11px "Eurostile", "Trebuchet MS", sans-serif';
   context.fillText(`Ignition ${Math.max(0, Math.ceil(endgame.sprintTimer))}`, 16, 22);
+}
+
+function drawLandingScene() {
+  const theme = getWorldThemeForDepth(6);
+  const progress = clamp(endgame.landingTimer / CORE_LANDING_DURATION, 0, 1);
+  const tilt = smoothstep(0.34, 1, progress) * 24;
+  const leftY = SPRINT_TRACK_Y + tilt * 0.5;
+  const rightY = SPRINT_TRACK_Y - tilt * 0.5;
+
+  drawBackground(theme);
+
+  context.fillStyle = 'rgba(8, 10, 18, 0.88)';
+  context.beginPath();
+  context.moveTo(0, leftY);
+  context.lineTo(GAME_WIDTH, rightY);
+  context.lineTo(GAME_WIDTH, GAME_HEIGHT);
+  context.lineTo(0, GAME_HEIGHT);
+  context.closePath();
+  context.fill();
+
+  context.strokeStyle = rgbToString(theme.glowColor, 0.22);
+  context.lineWidth = 2;
+  context.beginPath();
+  context.moveTo(0, leftY);
+  context.lineTo(GAME_WIDTH, rightY);
+  context.stroke();
+
+  for (let x = 14; x < GAME_WIDTH; x += 34) {
+    const y = lerp(leftY, rightY, x / GAME_WIDTH) + 10;
+    drawChevronStrip(x, y, 18, 10, theme.alertColor, 0.12);
+  }
+
+  context.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  context.font = '700 11px "Eurostile", "Trebuchet MS", sans-serif';
+  context.fillText(progress < 0.34 ? 'Core Floor' : 'Reactor Tilt', 16, 22);
+
+  if (progress > 0.4) {
+    const sparkAlpha = smoothstep(0.4, 1, progress) * 0.5;
+    context.save();
+    context.strokeStyle = `rgba(255, 214, 120, ${sparkAlpha})`;
+    context.lineWidth = 1.4;
+    for (let index = 0; index < 6; index += 1) {
+      const sparkX = game.ball.x - 2 + index * 2.5;
+      context.beginPath();
+      context.moveTo(sparkX, game.ball.y + BALL_RADIUS - 1);
+      context.lineTo(sparkX - 8 - index, game.ball.y + BALL_RADIUS + 8 + index * 2);
+      context.stroke();
+    }
+    context.restore();
+  }
+
+  drawBall();
 }
 
 function drawActivationScene() {
@@ -2721,6 +3514,18 @@ function drawActivationScene() {
   coreBurst.addColorStop(1, 'rgba(104,190,255,0)');
   context.fillStyle = coreBurst;
   context.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+  context.fillStyle = `rgba(255, 255, 255, ${0.12 + pulse * 0.68})`;
+  context.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+  if (pulse > 0.2) {
+    context.save();
+    context.fillStyle = `rgba(255, 255, 255, ${0.2 + pulse * 0.34})`;
+    context.beginPath();
+    context.arc(SPRINT_NODE_X - 4, SPRINT_TRACK_Y - 18, 28 + pulse * 120, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
+  }
 }
 
 function drawEndingBackdrop() {
@@ -2749,6 +3554,9 @@ function drawEndingBackdrop() {
 function drawTitleScene() {
   const time = performance.now() * 0.00018;
   const theme = getWorldThemeForDepth(0.18);
+  const alarmPulse = 0.35 + Math.sin(time * 8.5) * 0.18;
+  const lightningSeed = fract(time * 0.22);
+  const lightningAlpha = lightningSeed > 0.965 ? (1 - (lightningSeed - 0.965) / 0.035) * 0.36 : 0;
 
   drawWorldGradient(theme, time);
   drawFarShaft(theme, time * 0.72);
@@ -2772,6 +3580,9 @@ function drawTitleScene() {
 
   context.fillStyle = rgbToString(theme.glowColor, 0.08);
   context.fillRect(0, 0, GAME_WIDTH, 120);
+
+  context.fillStyle = `rgba(255, 92, 92, ${0.08 + alarmPulse * 0.12})`;
+  context.fillRect(116, 98, 128, 10);
 
   for (let index = 0; index < 14; index += 1) {
     const x = 12 + index * 26;
@@ -2799,6 +3610,19 @@ function drawTitleScene() {
   context.beginPath();
   context.arc(GAME_WIDTH * 0.5, 186, 5, 0, Math.PI * 2);
   context.fill();
+
+  if (lightningAlpha > 0.01) {
+    context.save();
+    context.strokeStyle = `rgba(180, 238, 255, ${lightningAlpha})`;
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(GAME_WIDTH * 0.5 + 22, 40);
+    context.lineTo(GAME_WIDTH * 0.5 - 8, 132);
+    context.lineTo(GAME_WIDTH * 0.5 + 18, 176);
+    context.lineTo(GAME_WIDTH * 0.5 - 20, 268);
+    context.stroke();
+    context.restore();
+  }
 }
 
 function drawDialogueScene() {
@@ -2848,7 +3672,10 @@ function drawLaunchScene() {
   const time = performance.now() * 0.0002;
   const theme = getWorldThemeForDepth(1.3 + intro.launchProgress * 0.7);
   const hatchOpen = smoothstep(0.08, 0.58, intro.launchProgress);
+  const boarding = smoothstep(0.06, 0.46, intro.launchProgress);
   const dropAmount = smoothstep(0.34, 1, intro.launchProgress);
+  const orbCenterX = GAME_WIDTH * 0.5;
+  const orbCenterY = lerp(254, 388, dropAmount);
 
   drawWorldGradient(theme, time);
   drawDialogueScene();
@@ -2864,19 +3691,98 @@ function drawLaunchScene() {
   context.fillStyle = shaftGlow;
   context.fillRect(118, 196, 124, GAME_HEIGHT - 196);
 
-  context.save();
-  context.translate(GAME_WIDTH * 0.5, lerp(178, 388, dropAmount));
-  context.rotate(0.06);
-  context.fillStyle = rgbToString([255, 255, 255], 0.88);
+  context.strokeStyle = rgbToString(theme.alertColor, 0.28);
+  context.lineWidth = 2;
   context.beginPath();
-  context.moveTo(0, -18);
-  context.lineTo(16, 10);
-  context.lineTo(0, 6);
-  context.lineTo(-16, 10);
+  context.moveTo(90, 236);
+  context.lineTo(142, 236);
+  context.lineTo(166, 258);
+  context.stroke();
+
+  const pilotX = lerp(124, orbCenterX - 4, boarding);
+  const pilotY = lerp(236, orbCenterY + 1, boarding);
+  const pilotAlpha = 1 - smoothstep(0.3, 0.58, intro.launchProgress);
+
+  context.save();
+  context.globalAlpha = pilotAlpha;
+  context.fillStyle = 'rgba(255, 215, 110, 0.9)';
+  context.fillRect(pilotX - 3, pilotY - 18, 6, 18);
+  context.fillRect(pilotX - 7, pilotY - 8, 5, 3);
+  context.fillRect(pilotX + 2, pilotY - 8, 5, 3);
+  context.fillStyle = 'rgba(18, 19, 24, 0.96)';
+  context.beginPath();
+  context.arc(pilotX, pilotY - 22, 5.5, 0, Math.PI * 2);
+  context.fill();
+  context.fillStyle = 'rgba(134, 242, 255, 0.88)';
+  context.fillRect(pilotX - 3, pilotY - 24, 6, 2);
+  context.restore();
+
+  const orbGlow = context.createRadialGradient(
+    orbCenterX - 5,
+    orbCenterY - 6,
+    4,
+    orbCenterX,
+    orbCenterY,
+    36
+  );
+  orbGlow.addColorStop(0, 'rgba(255, 249, 214, 0.95)');
+  orbGlow.addColorStop(0.35, 'rgba(255, 215, 110, 0.88)');
+  orbGlow.addColorStop(0.72, 'rgba(255, 157, 41, 0.38)');
+  orbGlow.addColorStop(1, 'rgba(255, 157, 41, 0)');
+
+  context.save();
+  context.shadowBlur = 24;
+  context.shadowColor = '#ffb347';
+  context.fillStyle = orbGlow;
+  context.beginPath();
+  context.arc(orbCenterX, orbCenterY, 30, 0, Math.PI * 2);
+  context.fill();
+  context.restore();
+
+  context.fillStyle = '#ffd76e';
+  context.beginPath();
+  context.arc(orbCenterX, orbCenterY, 17, 0, Math.PI * 2);
+  context.fill();
+
+  context.save();
+  context.beginPath();
+  context.arc(orbCenterX, orbCenterY, 15, 0, Math.PI * 2);
+  context.clip();
+
+  const canopy = context.createLinearGradient(orbCenterX - 16, orbCenterY - 16, orbCenterX + 16, orbCenterY + 16);
+  canopy.addColorStop(0, 'rgba(255, 255, 255, 0.32)');
+  canopy.addColorStop(0.4, 'rgba(255, 239, 170, 0.18)');
+  canopy.addColorStop(1, 'rgba(255, 160, 44, 0.04)');
+  context.fillStyle = canopy;
+  context.fillRect(orbCenterX - 16, orbCenterY - 16, 32, 32);
+
+  context.fillStyle = 'rgba(18, 19, 24, 0.96)';
+  context.beginPath();
+  context.arc(orbCenterX - 1, orbCenterY - 1, 4.5, 0, Math.PI * 2);
+  context.fill();
+  context.fillStyle = 'rgba(134, 242, 255, 0.88)';
+  context.fillRect(orbCenterX - 4, orbCenterY - 4, 8, 2);
+  context.fillStyle = 'rgba(255, 215, 110, 0.82)';
+  context.fillRect(orbCenterX - 2, orbCenterY - 15, 4, 24);
+  context.restore();
+
+  context.strokeStyle = 'rgba(255, 247, 210, 0.72)';
+  context.lineWidth = 1;
+  context.beginPath();
+  context.arc(orbCenterX, orbCenterY, 16.5, 0, Math.PI * 2);
+  context.stroke();
+
+  context.save();
+  context.translate(orbCenterX, orbCenterY + 10);
+  context.fillStyle = rgbToString(theme.accentColor, 0.4 + dropAmount * 0.18);
+  context.fillRect(-3, 0, 6, 26);
+  context.fillStyle = 'rgba(255, 215, 110, 0.22)';
+  context.beginPath();
+  context.moveTo(-9, 20);
+  context.lineTo(0, 54 + dropAmount * 16);
+  context.lineTo(9, 20);
   context.closePath();
   context.fill();
-  context.fillStyle = rgbToString(theme.accentColor, 0.36);
-  context.fillRect(-3, 10, 6, 24);
   context.restore();
 }
 
@@ -2964,6 +3870,84 @@ function drawBall() {
   context.stroke();
 }
 
+function drawZoneLabel() {
+  const zone = getZoneLabel();
+  context.save();
+  context.fillStyle = 'rgba(255, 255, 255, 0.82)';
+  context.font = '700 10px "Eurostile", "Trebuchet MS", sans-serif';
+  context.textAlign = 'right';
+  context.fillText(zone, GAME_WIDTH - 14, GAME_HEIGHT - 14);
+  context.restore();
+}
+
+function drawObjectiveRibbon() {
+  const objective = getObjectiveLabel();
+  if (!objective || intro.mode === 'title') {
+    return;
+  }
+
+  const width = 180;
+  const x = GAME_WIDTH * 0.5 - width * 0.5;
+  context.save();
+  context.fillStyle = 'rgba(4, 10, 20, 0.76)';
+  context.strokeStyle = 'rgba(89, 243, 255, 0.2)';
+  context.lineWidth = 1;
+  context.beginPath();
+  context.roundRect(x, 10, width, 28, 12);
+  context.fill();
+  context.stroke();
+  context.fillStyle = 'rgba(255, 204, 92, 0.92)';
+  context.font = '700 10px "Eurostile", "Trebuchet MS", sans-serif';
+  context.textAlign = 'center';
+  context.fillText(objective, GAME_WIDTH * 0.5, 28);
+  context.restore();
+}
+
+function drawPhaseCue() {
+  if (presentation.cueTimer <= 0 && presentation.flashAlpha <= 0.01) {
+    return;
+  }
+
+  if (presentation.flashAlpha > 0.01) {
+    context.save();
+    context.fillStyle = `rgba(255, 255, 255, ${presentation.flashAlpha})`;
+    context.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    context.restore();
+  }
+
+  if (presentation.cueTimer <= 0) {
+    return;
+  }
+
+  const reveal = smoothstep(0, 0.2, Math.min(1, presentation.cueTimer / 2.2));
+  const alpha = Math.min(1, presentation.cueTimer / 0.4, (2.2 - presentation.cueTimer) / 0.4);
+  const width = 240;
+  const height = presentation.cueSubtitle ? 56 : 42;
+  const x = GAME_WIDTH * 0.5 - width * 0.5;
+  const y = 58 - (1 - reveal) * 12;
+
+  context.save();
+  context.globalAlpha = Math.max(0, alpha);
+  context.fillStyle = 'rgba(3, 8, 16, 0.86)';
+  context.strokeStyle = 'rgba(255, 204, 92, 0.26)';
+  context.lineWidth = 1.5;
+  context.beginPath();
+  context.roundRect(x, y, width, height, 16);
+  context.fill();
+  context.stroke();
+
+  context.fillStyle = 'rgba(255, 255, 255, 0.94)';
+  context.font = '700 13px "Eurostile", "Trebuchet MS", sans-serif';
+  context.textAlign = 'center';
+  context.fillText(presentation.cueTitle, GAME_WIDTH * 0.5, y + 19);
+  if (presentation.cueSubtitle) {
+    context.fillStyle = 'rgba(234, 248, 255, 0.82)';
+    context.font = '500 10px "Work Sans", sans-serif';
+    context.fillText(presentation.cueSubtitle, GAME_WIDTH * 0.5, y + 36);
+  }
+  context.restore();
+}
+
 function drawFrame() {
   if (intro.mode === 'title') {
     drawTitleScene();
@@ -2979,6 +3963,12 @@ function drawFrame() {
     context.font = '700 11px "Eurostile", "Trebuchet MS", sans-serif';
     context.fillText(`Core ${Math.max(0, Math.ceil(CORE_BOSS_DURATION - endgame.bossTimer))}`, 16, 22);
     context.fillText('Living Core', GAME_WIDTH - 86, 22);
+  } else if (endgame.phase === 'landing') {
+    drawLandingScene();
+  } else if (endgame.phase === 'briefing') {
+    drawBackground(getWorldThemeForDepth(6));
+    drawSprintTrack();
+    drawBall();
   } else if (endgame.phase === 'sprint') {
     drawBackground(getWorldThemeForDepth(6));
     drawSprintTrack();
@@ -2997,23 +3987,44 @@ function drawFrame() {
     context.fillText(`Score ${Math.ceil(game.score)}`, 16, 22);
     context.fillText(`Level ${game.level}`, GAME_WIDTH - 74, 22);
   }
+
+  if (intro.mode !== 'title') {
+    drawObjectiveRibbon();
+  }
+
+  if (intro.mode === 'none' || endgame.phase !== 'none') {
+    drawZoneLabel();
+  }
+
+  drawPhaseCue();
 }
 
 function frame(timestamp) {
   try {
     updateIntroSequence(timestamp);
 
-    if (game.running) {
+    let uiDelta = 0;
+    if (presentation.lastFrameTimestamp) {
+      uiDelta = clamp((timestamp - presentation.lastFrameTimestamp) / 1000, 0, 0.05);
+    }
+    presentation.lastFrameTimestamp = timestamp;
+
+    let deltaTime = 0;
+    if (game.running || endgame.phase === 'activation' || endgame.phase === 'landing') {
       if (!game.lastTimestamp) {
         game.lastTimestamp = timestamp;
       }
 
-      const deltaTime = clamp((timestamp - game.lastTimestamp) / 1000, 0, 0.032);
+      deltaTime = clamp((timestamp - game.lastTimestamp) / 1000, 0, 0.032);
       game.lastTimestamp = timestamp;
 
       updateGame(deltaTime);
       updateHud();
     }
+
+    presentation.cueTimer = Math.max(0, presentation.cueTimer - uiDelta);
+    presentation.flashAlpha = Math.max(0, presentation.flashAlpha - Math.max(uiDelta, 0.016) * 1.6);
+    presentation.currentZoneLabel = getZoneLabel();
 
     drawFrame();
   } catch (error) {
@@ -3033,6 +4044,11 @@ function updateDirectionalInput(direction, isActive) {
 function handlePrimaryAction() {
   if (endgame.phase === 'ending') {
     advanceEndingSequence();
+    return;
+  }
+
+  if (endgame.phase === 'briefing') {
+    advanceBriefingSequence();
     return;
   }
 
@@ -3065,11 +4081,18 @@ function handlePrimaryAction() {
 
 function handleKeyState(event, isActive) {
   const key = event.key.toLowerCase();
+  const isModifierOnly = key === 'shift' || key === 'meta' || key === 'alt' || key === 'control';
 
   if (isActive) {
     activateSoundtrack().catch((error) => {
       console.error('Audio activation failed', error);
     });
+  }
+
+  if (isActive && !isModifierOnly && (intro.mode === 'dialogue' || endgame.phase === 'briefing')) {
+    handlePrimaryAction();
+    event.preventDefault();
+    return;
   }
 
   if (key === 'arrowleft' || key === 'a') {
