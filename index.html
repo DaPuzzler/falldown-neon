@@ -3,146 +3,123 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#edf4f1">
+  <meta name="theme-color" content="#02030a">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="Dad Energy Meter">
-  <title>Dad Energy Meter</title>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Falldown Neon">
+  <title>Falldown Neon</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <link rel="apple-touch-icon" href="icon-192.png">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main class="app-shell">
-    <header class="hero">
-      <div class="hero-copy">
-        <p class="eyebrow">Daily check-in</p>
-        <h1>Dad Energy Meter</h1>
-        <p class="subtitle">Track energy, sleep, and workouts with a low-friction daily log.</p>
-      </div>
-      <img class="hero-art" src="dad-energy-hero.png" alt="Cartoon dad energy meter artwork with a colorful gauge, coffee, and low-energy dad scene.">
-    </header>
+  <main class="cabinet">
+    <section class="marquee">
+      <p class="kicker">Arcade Calculator Remix</p>
+      <h1>Falldown Neon</h1>
+      <p class="tagline">The graphing-calculator classic rebuilt as a glowing Tron run through a collapsing digital grid.</p>
+    </section>
 
-    <section class="panel">
-      <form id="entry-form" novalidate>
-        <div class="field">
-          <label for="date">Date</label>
-          <input id="date" name="date" type="date" required>
+    <section class="console" aria-label="Falldown game console">
+      <div class="screen-panel">
+        <div class="screen-topline">
+          <span>Sector 84</span>
+          <span id="status-text">Standby</span>
         </div>
 
-        <section class="summary-card" aria-label="Calories summary">
-          <div>
-            <span class="summary-label">Calories Today</span>
-            <strong id="calories-total" class="summary-value">0</strong>
-          </div>
-          <div>
-            <span class="summary-label">Target</span>
-            <strong id="calories-target" class="summary-value">1800</strong>
-          </div>
-          <div>
-            <span class="summary-label">Remaining</span>
-            <strong id="calories-remaining" class="summary-value">1800</strong>
-          </div>
-        </section>
-
-        <div class="field">
-          <label for="energy">Energy (1-10)</label>
-          <div class="slider-row">
-            <input id="energy" name="energy" type="range" min="1" max="10" step="1" value="5" required>
-            <output id="energy-value" class="slider-value" for="energy">5</output>
+        <div class="game-frame">
+          <canvas id="game-canvas" width="360" height="640" aria-label="Falldown Neon game"></canvas>
+          <div class="overlay" id="overlay">
+            <p class="overlay-label" id="overlay-label">Press Start</p>
+            <h2 class="overlay-title" id="overlay-title">Drop Through The Grid</h2>
+            <p class="overlay-copy" id="overlay-copy">Thread the glowing gaps. Miss the lane and the ceiling closes in.</p>
           </div>
         </div>
 
-        <div class="field">
-          <label for="sleep">Sleep Hours</label>
-          <input id="sleep" name="sleep" type="number" min="0" max="24" step="0.1" inputmode="decimal" required>
+        <div class="hud">
+          <article class="stat-card">
+            <span class="stat-label">Score</span>
+            <strong class="stat-value" id="score-value">0</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Best</span>
+            <strong class="stat-value" id="best-value">0</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Level</span>
+            <strong class="stat-value" id="level-value">1</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Speed</span>
+            <strong class="stat-value" id="speed-value">1.0x</strong>
+          </article>
         </div>
-
-        <fieldset class="field">
-          <legend>Workout</legend>
-          <div class="choice-row">
-            <label class="choice">
-              <input type="radio" name="workout" value="yes" checked>
-              <span>Yes</span>
-            </label>
-            <label class="choice">
-              <input type="radio" name="workout" value="no">
-              <span>No</span>
-            </label>
-          </div>
-        </fieldset>
-
-        <section class="field food-section" aria-labelledby="food-heading">
-          <div class="food-header">
-            <h2 id="food-heading">Food</h2>
-            <p>Keep it short. Calories can be blank.</p>
-          </div>
-
-          <div class="meal-row">
-            <label class="sr-only" for="breakfast-text">Breakfast description</label>
-            <input id="breakfast-text" name="breakfastText" type="text" placeholder="Breakfast">
-            <label class="sr-only" for="breakfast-cal">Breakfast calories</label>
-            <input id="breakfast-cal" name="breakfastCal" type="number" min="0" max="3000" step="1" inputmode="numeric" placeholder="Cals">
-          </div>
-
-          <div class="meal-row">
-            <label class="sr-only" for="lunch-text">Lunch description</label>
-            <input id="lunch-text" name="lunchText" type="text" placeholder="Lunch">
-            <label class="sr-only" for="lunch-cal">Lunch calories</label>
-            <input id="lunch-cal" name="lunchCal" type="number" min="0" max="3000" step="1" inputmode="numeric" placeholder="Cals">
-          </div>
-
-          <div class="meal-row">
-            <label class="sr-only" for="dinner-text">Dinner description</label>
-            <input id="dinner-text" name="dinnerText" type="text" placeholder="Dinner">
-            <label class="sr-only" for="dinner-cal">Dinner calories</label>
-            <input id="dinner-cal" name="dinnerCal" type="number" min="0" max="3000" step="1" inputmode="numeric" placeholder="Cals">
-          </div>
-
-          <div class="meal-row">
-            <label class="sr-only" for="snack-text">Snack description</label>
-            <input id="snack-text" name="snackText" type="text" placeholder="Snack">
-            <label class="sr-only" for="snack-cal">Snack calories</label>
-            <input id="snack-cal" name="snackCal" type="number" min="0" max="3000" step="1" inputmode="numeric" placeholder="Cals">
-          </div>
-        </section>
-
-        <div class="field">
-          <label for="notes">Notes</label>
-          <textarea id="notes" name="notes" rows="3" maxlength="240" placeholder="Optional"></textarea>
-        </div>
-
-        <p id="form-message" class="form-message" aria-live="polite"></p>
 
         <div class="actions">
-          <button type="submit" class="primary">Save</button>
-          <button type="button" id="clear-button" class="secondary">Clear All</button>
+          <button id="start-button" class="action action-primary" type="button">Start Run</button>
+          <button id="pause-button" class="action" type="button" disabled>Pause</button>
+          <button id="music-button" class="action action-secondary" type="button" aria-pressed="true">Music On</button>
         </div>
-      </form>
-    </section>
 
-    <section class="panel">
-      <div class="section-heading">
-        <h2>Last 7 Days</h2>
-        <p>Energy and sleep trend.</p>
+        <div class="touch-controls" aria-label="Touch controls">
+          <button class="touch-button" data-dir="left" type="button" aria-label="Move left">◀</button>
+          <button class="touch-button" data-dir="right" type="button" aria-label="Move right">▶</button>
+        </div>
       </div>
-      <div class="chart-wrap">
-        <canvas id="trend-chart" aria-label="Energy and sleep chart"></canvas>
-        <p id="chart-fallback" class="chart-fallback" hidden>Chart unavailable offline until Chart.js loads at least once.</p>
-      </div>
-    </section>
 
-    <section class="panel">
-      <div class="section-heading">
-        <h2>Recent Entries</h2>
-        <p>Newest 10 saved days.</p>
-      </div>
-      <ul id="entries-list" class="entries-list"></ul>
+      <aside class="telemetry">
+        <section class="panel">
+          <h2>Mission</h2>
+          <p>Stay between the ceiling and the abyss while the grid accelerates. Shift left or right and keep finding the next opening.</p>
+        </section>
+
+        <section class="panel">
+          <h2>Controls</h2>
+          <p><kbd>←</kbd> <kbd>→</kbd> or <kbd>A</kbd> <kbd>D</kbd> to drift.</p>
+          <p><kbd>P</kbd> pauses. <kbd>M</kbd> toggles music. Touch buttons handle mobile play.</p>
+        </section>
+
+        <section class="panel">
+          <h2>Rig</h2>
+          <label class="setting" for="difficulty-select">
+            <span class="setting-label">Difficulty</span>
+            <select id="difficulty-select">
+              <option value="easy">Easy</option>
+              <option value="normal" selected>Normal</option>
+              <option value="hard">Hard</option>
+              <option value="impossible">Impossible</option>
+            </select>
+          </label>
+
+          <label class="setting" for="volume-slider">
+            <span class="setting-row">
+              <span class="setting-label">Music Volume</span>
+              <strong id="volume-value">90%</strong>
+            </span>
+            <input id="volume-slider" type="range" min="0" max="100" step="1" value="90">
+          </label>
+        </section>
+
+        <section class="panel panel-accent">
+          <h2>Run Notes</h2>
+          <p id="run-summary">The grid is idle. Start a run to initialize the lane generator.</p>
+        </section>
+
+        <div class="keypad" aria-hidden="true">
+          <span class="key glow"></span>
+          <span class="key"></span>
+          <span class="key"></span>
+          <span class="key glow"></span>
+          <span class="key"></span>
+          <span class="key"></span>
+          <span class="key glow"></span>
+          <span class="key"></span>
+        </div>
+      </aside>
     </section>
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

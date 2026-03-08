@@ -1,12 +1,12 @@
 {
-  "name": "Dad Energy Meter",
-  "short_name": "Dad Meter",
-  "description": "A minimal daily tracker for dad energy, sleep, workouts, and notes.",
+  "name": "Falldown Neon",
+  "short_name": "Falldown",
+  "description": "A Tron-inspired remake of the classic calculator Falldown game.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#f4f7f5",
-  "theme_color": "#edf4f1",
+  "background_color": "#02030a",
+  "theme_color": "#02030a",
   "icons": [
     {
       "src": "icon-192.png",

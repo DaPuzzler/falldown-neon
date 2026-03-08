@@ -1,12 +1,10 @@
-const CACHE_NAME = 'dad-energy-meter-v6';
+const CACHE_NAME = 'falldown-neon-v1';
 const APP_ASSETS = [
   './',
   './index.html',
   './style.css',
   './app.js',
   './manifest.json',
-  './dad-energy-hero.svg',
-  './dad-energy-hero.png',
   './icon-192.png',
   './icon-512.png',
 ];
@@ -37,12 +35,12 @@ self.addEventListener('fetch', (event) => {
   }
 
   const requestUrl = new URL(event.request.url);
-  const isAppAsset = requestUrl.origin === self.location.origin;
+  const isLocalAsset = requestUrl.origin === self.location.origin;
 
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        if (isAppAsset && response && response.status === 200 && response.type !== 'opaque') {
+        if (isLocalAsset && response.ok && response.type !== 'opaque') {
           const responseClone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
         }
@@ -50,7 +48,7 @@ self.addEventListener('fetch', (event) => {
         return response;
       })
       .catch(() =>
-        caches.match(event.request).then((cached) => cached || caches.match('./index.html'))
+        caches.match(event.request).then((cachedResponse) => cachedResponse || caches.match('./index.html'))
       )
   );
 });
